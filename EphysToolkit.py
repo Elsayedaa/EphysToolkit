@@ -173,7 +173,7 @@ class load_experiment(ephys_toolkit):
         for i in include_units:
 
             unit = self.spike_data[i]
-            cluster_id = unit['cluster_id']
+            cluster_id = float(unit['cluster_id'])
             x = self.make_raster(stim_condition_start_times, unit['rel_spike_time'], thresh = thresh)
             h, bins = np.histogram(x, bins = np.arange(
                 thresh_min,
@@ -261,7 +261,8 @@ class load_experiment(ephys_toolkit):
     def get_population_response_matrix(
             self,
             include_units, 
-            stim_condition = None, 
+            stim_condition = None,
+            columns = 'cluster_id',
             thresh = None, 
             norm = None):
         
@@ -270,22 +271,71 @@ class load_experiment(ephys_toolkit):
             raise NoStimulusCondition()
             
         elif stim_condition == 'all':
-            return self.joint_population_response_matrix(
+            single = False
+            stb = self.joint_population_response_matrix(
                 include_units,
                 thresh,
                 norm)
         
         elif stim_condition in self.stim_conditions:
+            single = True
                 
             stim_start_times = self.get_condition_times(stim_condition)['start']
             
-            return self.single_population_response_matrix(
+            stb = self.single_population_response_matrix(
                 include_units,
                 stim_start_times,
                 thresh,
                 norm)
         else:
             raise UnrecognizedStimulusCondition()
+        
+        try:
+#             #Alternate solution - not formatting the index correctly
+#             stb_cid_col = stb.groupby(
+
+#                 stb.stimulus_condition).agg(list).T
+
+#             stb_cid_col = stb_cid_col.explode(
+
+#                 list(stb_cid_col.columns.values)
+#             )
+
+            stb_cid_col = pd.melt(
+
+                stb, 
+                id_vars=['stimulus_condition'], 
+                value_vars= stb.columns.values[1:]).pivot_table(
+
+                    columns = 'stimulus_condition', 
+                    index = 'variable', 
+                    values = 'value', 
+                    aggfunc = list)
+
+            stb_cid_col_reset = stb_cid_col.reset_index()
+            condition_list = list(stb_cid_col_reset.columns.values[1:])
+            stb_cid_col_reset.columns = ['cluster_id']+condition_list
+            stb_cid_col = stb_cid_col_reset.explode(condition_list).astype(float)
+            
+#         except AttributeError:
+        except KeyError:
+            if (single
+                    and columns != 'cluster_id'):
+                print("Not enough stimulus conditions")
+                
+            else:
+                stb_cid_col = None
+                    
+        columns_dic = {
+            'stimulus_condition': stb_cid_col,
+            'cluster_id': stb}
+        
+        if columns in list(columns_dic.keys()):
+            return columns_dic[columns]
+                               
+        else:
+            raise UnrecognizedColumnsInput(list( columns_dic.keys()))                      
+                               
 
     
 #Class Errors
@@ -323,3 +373,16 @@ class UnrecognizedStimulusCondition(Exception):
         Please enter a valid stimulus condition.
         """
         super().__init__(self.message)
+                               
+class UnrecognizedColumnsInput(Exception):
+    """
+    Exception raised for invalid user input in the
+    columns argument in the 
+    self.get_population_response_matrix method.
+    """
+    def __init__(self, arg):
+        self.message = f"""
+        Invalid input for 'columns'. Please select one of: {arg}.
+        """
+        super().__init__(self.message)                             
+                              
