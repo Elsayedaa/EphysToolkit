@@ -1,9 +1,19 @@
 # class imports
+import sys
+import platform
+import re
 import numpy as np
+import json
 import scipy.io
 import pandas as pd
-import json
 from scipy import stats
+
+if platform.system() == 'Linux':
+    sys.path.append("/media/sf_DebianShared/custom_modules")
+if platform.system() == 'Windows':
+    sys.path.append(r"C:\Users\AE\Documents\DebianShared\custom_modules")
+from PathExplorer import path_explorer
+
 
 class ephys_toolkit:
     
@@ -29,6 +39,25 @@ class ephys_toolkit:
     
     def average_response(self, array, stim_reps):
         return (array/stim_reps)*self.frames
+    
+    def get_spike_sorting_metrics(self, file_directory):
+        
+        with open(file_directory, 'r') as sorting_file:
+            sorting_info = json.load(sorting_file)
+        
+        spike_sorting_data = [
+            #[cluster['label'] for cluster in sorting_info['clusters']],
+            [cluster['metrics']['isolation'] for cluster in sorting_info['clusters']],
+            [cluster['metrics']['noise_overlap'] for cluster in sorting_info['clusters']]
+        ]
+        
+        ss_df = pd.DataFrame(np.array(spike_sorting_data).T)
+        ss_df.columns = [
+            # 'cluster', 
+            'isolation', 'noise_overlap'
+        ]
+        
+        return ss_df
           
     #functions to make concatenated across trial and non concatenated across trial rasters
     def concatenated_raster(self, stims, spikes, thresh = tuple):
@@ -93,7 +122,7 @@ class load_experiment(ephys_toolkit):
         
         self.spike_data = [
             {
-                'cluster_id':unit[0][0][0],
+                # 'cluster_id':unit[0][0][0],
                 'channel_id':unit[1][0][0],
                 'spike_index':unit[2][0],
                 'spike_time':unit[3][0]
@@ -137,22 +166,6 @@ class load_experiment(ephys_toolkit):
             'start': condition_starts,
             'stop': condition_stops
         }
-    
-    def get_spike_sorting_metrics(self, file_directory):
-        
-        with open(file_directory, 'r') as sorting_file:
-            sorting_info = json.load(sorting_file)
-        
-        spike_sorting_data = [
-            [cluster['label'] for cluster in sorting_info['clusters']],
-            [cluster['metrics']['isolation'] for cluster in sorting_info['clusters']],
-            [cluster['metrics']['noise_overlap'] for cluster in sorting_info['clusters']]
-        ]
-        
-        ss_df = pd.DataFrame(np.array(spike_sorting_data).T)
-        ss_df.columns = ['cluster', 'isolation', 'noise_overlap']
-        
-        return ss_df
 
     def single_population_response_matrix(
             self,
@@ -173,7 +186,7 @@ class load_experiment(ephys_toolkit):
         for i in include_units:
 
             unit = self.spike_data[i]
-            cluster_id = float(unit['cluster_id'])
+            cluster_id = i
             x = self.make_raster(stim_condition_start_times, unit['rel_spike_time'], thresh = thresh)
             h, bins = np.histogram(x, bins = np.arange(
                 thresh_min,
@@ -291,16 +304,6 @@ class load_experiment(ephys_toolkit):
             raise UnrecognizedStimulusCondition()
         
         try:
-#             #Alternate solution - not formatting the index correctly
-#             stb_cid_col = stb.groupby(
-
-#                 stb.stimulus_condition).agg(list).T
-
-#             stb_cid_col = stb_cid_col.explode(
-
-#                 list(stb_cid_col.columns.values)
-#             )
-
             stb_cid_col = pd.melt(
 
                 stb, 
@@ -317,7 +320,7 @@ class load_experiment(ephys_toolkit):
             stb_cid_col_reset.columns = ['cluster_id']+condition_list
             stb_cid_col = stb_cid_col_reset.explode(condition_list).astype(float)
             
-#         except AttributeError:
+
         except KeyError:
             if (single
                     and columns != 'cluster_id'):
@@ -336,7 +339,62 @@ class load_experiment(ephys_toolkit):
         else:
             raise UnrecognizedColumnsInput(list( columns_dic.keys()))                      
                                
+class load_project(ephys_toolkit):
+    
+    # initialize the load_project class with a full path to the
+    # directory containing the project files
+    def __init__(self, project_path):
+        ephys_toolkit.__init__(self)
+        self.ppath = project_path
+        self.gen_project_workbook()
+    
+    # generate the workbook of project data
+    def gen_project_workbook(self):
+        explorer = path_explorer()
+        
+        # find and sort spike files
+        spike_files = explorer.findext(self.ppath,  '.mat', r = 'firings')
+        spike_files.sort(key = lambda x: int(re.search(r'BLK(\d{1,})', x).group(1)))
+        
+        # find and sort stim files
+        stim_files = explorer.findext(self.ppath,  '.mat', r = 'stimulusData')
+        stim_files.sort(key = lambda x: int(re.search(r'BLK(\d{1,})', x).group(1)))
+        
+        # match spike and stim files
+        matched_spike_stim = zip(spike_files, stim_files)
+        
+        #find metrics files
+        metrics_files = explorer.findext(self.ppath,  '.json', r = 'metrics_isolation')
+        
+        ################################################################################
+        
+        # compile the workbook
+        self.workbook = []
+        
+        # compile spike sorting metrics first
+        for metrics_file in metrics_files:
+            section_parent = int(re.search(r'Section_(\d{1,})', metrics_file).group(1))
+            df = self.get_spike_sorting_metrics(metrics_file)
 
+            self.workbook.append(
+                {
+                    'section_id': section_parent, 
+                    'spike_sorting_metrics': df, 
+                    'blocks': []
+                }
+            )
+        
+        # match experiment (block) objects to section
+        for spike_stim in matched_spike_stim:
+            
+            section_child = int(re.search(r'Section_(\d{1,})', spike_stim[0]).group(1))
+            block = int(re.search(r'BLK(\d{1,})', spike_stim[0]).group(1))
+
+            experiment = load_experiment(*spike_stim)
+            self.workbook[section_child-1]['blocks'].append({
+                'block_id': block,
+                'experiment': experiment
+            })
     
 #Class Errors
 class UnrecognizedNorm(Exception):
