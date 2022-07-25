@@ -98,6 +98,7 @@ class load_experiment(ephys_toolkit):
         self.spikes = spikes_mat['Data'][0]
         self.stims = stims_mat['StimulusData'][0][0]
         self.init_stim_data()
+        self.parameters_matched = False
         self.init_spike_data()
         self.get_event_times()
         
@@ -167,6 +168,56 @@ class load_experiment(ephys_toolkit):
             'stop': condition_stops
         }
 
+    def match_condition_parameters(self, params_file):
+        # regex to get the parameter names + values
+        name_identifier = r'Var\d{1,}Val'
+        val_identifier = r'var\d{1,}value'    
+
+        # load the parameter file and extract the keys
+        params = scipy.io.loadmat(params_file)
+        param_keys = list(params.keys())
+
+        # use regex to get the param names and values
+        name_keys = [key for key in param_keys if re.search(name_identifier, key)]
+        val_keys = [key for key in param_keys if re.search(val_identifier, key)]
+
+        # get the condition numbers
+        condition_range = len(params[val_keys[0]][0])
+        condition_ids = [i+1 for i in range(condition_range)]  
+
+        # map conditions to parameter values
+        parameter_map = {'condition': condition_ids}
+        for i in range(len(name_keys)):
+            parameter_name = str(params[name_keys[i]][0])
+            parameter_values = np.array(params[val_keys[i]][0])
+
+            parameter_map[parameter_name] = parameter_values  
+
+        # parameter dataframe + the original stim_data dataframe
+        self.parameter_map = pd.DataFrame(parameter_map)
+        df = self.stim_data
+
+        # get the parameters to insert into the original dataframe
+        insert = []
+        for cond  in df.stim_condition_ids.values:
+            arr = self.parameter_map.loc[self.parameter_map.condition == cond].values[0]
+            insert.append(arr)
+        insert = pd.DataFrame(insert, columns = self.parameter_map.columns.values)
+
+        # insert the parameter values into the original dataframe
+        df1 = df.join(insert)
+
+        # reset the stim_data attribute
+        self.stim_data = df1[
+            list([df.columns.values[0]])
+            + list(self.parameter_map.columns.values[1:]) 
+            + list(
+                df.columns.values[1:]
+            )
+        ]
+        
+        self.parameters_matched = True
+   
     def single_population_response_matrix(
             self,
             include_units,
@@ -256,21 +307,48 @@ class load_experiment(ephys_toolkit):
                 [con_df, df],
                 axis = 0, 
                 ignore_index = True)
+            
+        if self.parameters_matched == False:
+            # make a conditions column
+            bins_per_condition = len(np.arange(thresh_min, thresh_max, 1))
+            con_df_columns = list(con_df.columns)
+            conditions_column = []
+            for condition in self.stim_conditions:
+                conditions_column += [condition]*bins_per_condition
 
-        # make a conditions column
-        bins_per_condition = len(np.arange(thresh_min, thresh_max, 1))
-        con_df_columns = list(con_df.columns)
-        conditions_column = []
-        for condition in self.stim_conditions:
-            conditions_column += [condition]*bins_per_condition
+            # arrange dataframe column order
+            con_df['stimulus_condition'] = np.array(conditions_column)
+            new_columns = ['stimulus_condition'] + con_df_columns
+            con_df = con_df[new_columns]
+            
+        
+        else: # repeat what's above while adding parameter columns    
 
-        # arrange dataframe column order
-        con_df['stimulus_condition'] = np.array(conditions_column)
-        new_columns = ['stimulus_condition'] + con_df_columns
-        con_df = con_df[new_columns]
+            bins_per_condition = len(np.arange(thresh_min, thresh_max, 1))
+            con_df_columns = list(con_df.columns)
+            conditions_column = []
+            param_columns = []
+            
+            for condition in self.stim_conditions:
+                params = list(
+                    self.parameter_map.loc[self.parameter_map.condition == condition].values[0][1:]
+                )
+                conditions_column += [condition]*bins_per_condition
+                param_columns += [params]*bins_per_condition
+            param_columns = pd.DataFrame(
+                param_columns, columns = self.parameter_map.columns.values[1:]
+            )
+            
+            con_df['stimulus_condition'] = np.array(conditions_column)
+            con_df = con_df.join(param_columns)
+            new_columns = ['stimulus_condition'] + list(param_columns.columns.values) + con_df_columns
+            con_df = con_df[new_columns]
         
         return con_df
     
+    # needs to be cleaned up and optimized...but it works
+    # caching matricies that have already been generated 
+    # might be a good idea
     def get_population_response_matrix(
             self,
             include_units, 
@@ -303,23 +381,33 @@ class load_experiment(ephys_toolkit):
         else:
             raise UnrecognizedStimulusCondition()
         
-        try:
-            stb_cid_col = pd.melt(
+        
+        try: # remove the if statement when implementing caching
+            if columns != 'stimulus_condition':
+                stb_cid_col = None
+            else:
+                if self.parameters_matched == True:
+                    i = len(self.parameter_map.columns)
+                    c = list(stb.columns.values[i:])
+                    stb1 = stb[['stimulus_condition']+c]
+                else:
+                    stb1 = stb
 
-                stb, 
-                id_vars=['stimulus_condition'], 
-                value_vars= stb.columns.values[1:]).pivot_table(
+                stb_cid_col = pd.melt(
 
-                    columns = 'stimulus_condition', 
-                    index = 'variable', 
-                    values = 'value', 
-                    aggfunc = list)
+                    stb1, 
+                    id_vars=['stimulus_condition'], 
+                    value_vars= stb1.columns.values[1:]).pivot_table(
 
-            stb_cid_col_reset = stb_cid_col.reset_index()
-            condition_list = list(stb_cid_col_reset.columns.values[1:])
-            stb_cid_col_reset.columns = ['cluster_id']+condition_list
-            stb_cid_col = stb_cid_col_reset.explode(condition_list).astype(float)
-            
+                        columns = 'stimulus_condition', 
+                        index = 'variable', 
+                        values = 'value', 
+                        aggfunc = list)
+
+                stb_cid_col_reset = stb_cid_col.reset_index()
+                condition_list = list(stb_cid_col_reset.columns.values[1:])
+                stb_cid_col_reset.columns = ['cluster_id']+condition_list
+                stb_cid_col = stb_cid_col_reset.explode(condition_list).astype(float)
 
         except KeyError:
             if (single
