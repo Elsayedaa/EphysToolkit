@@ -40,6 +40,97 @@ class ephys_toolkit:
     def average_response(self, array, stim_reps):
         return (array/stim_reps)*self.frames
     
+    def make_grating_matrix(
+            self,
+            sf, 
+            ori, 
+            ph, 
+            dim = tuple,
+            radius = int,
+            edge = 'discrete'):
+
+        edge_filt = {
+            'discrete': self.discrete_radius(dim, radius),
+            'gaussian': self.gaussian_radius(dim, radius)
+        }
+        filt = edge_filt[edge]
+
+        step = 20/dim[0]
+
+        x = np.arange(-10,10,step)
+        x = np.array([x for i in range(dim[0])])
+        y = x.T
+
+        fx = sf*np.cos(np.radians(ori))
+        fy = sf*np.sin(np.radians(ori))
+
+        m = np.cos(2*np.pi*fx*x + 2*np.pi*fy*y + np.radians(ph)*2*np.pi)
+
+        return m*filt
+
+    #make a drifting grating from a series of stationary gratings
+    def make_drifting_grating_matrix(
+            self, 
+            sf, 
+            ori, 
+            tf, 
+            dt, 
+            t, 
+            dim = tuple,
+            radius = int,
+            edge = 'discrete'):
+
+        tensor = []
+        params = []
+        deg_step = dt*360*tf
+
+        d = np.arange(dt,t,dt)
+
+        phase = 0
+        for x in d:
+            m = self.make_grating_matrix(
+                sf, 
+                ori, 
+                phase, 
+                dim,
+                radius,
+                edge)
+            tensor.append(m)
+            params.append([sf, tf, ori, phase])
+            phase+=deg_step 
+
+        return tensor, params
+
+    def discrete_radius(self, dim = tuple, radius  = int):
+        x, y = np.meshgrid(
+            np.linspace(-1,1, dim[0]), 
+            np.linspace(-1,1, dim[1])
+        )
+
+        m = []
+        for i0 in range(len(x)):
+            row = []
+            for i1 in range(len(y)):
+                if ((x[i0,i1]**2 + y[i0,i1]**2) 
+                    < ((radius/360)**2)):
+                        row.append(1)
+                else:
+                    row.append(0)
+            m.append(row)
+
+        return np.array(m)
+    
+    def gaussian_radius(self, dim = tuple, radius = int):
+        x, y = np.meshgrid(
+            np.linspace(-1,1, dim[0]), 
+            np.linspace(-1,1, dim[1])
+        )
+        d = np.sqrt(x*x+y*y)
+        sigma, mu = radius/360, 0.0
+        g = np.exp(-( (d-mu)**2 / ( 2.0 * sigma**2 ) ) )
+
+        return g
+    
     def get_spike_sorting_metrics(self, file_directory):
         
         with open(file_directory, 'r') as sorting_file:
@@ -425,8 +516,99 @@ class load_experiment(ephys_toolkit):
             return columns_dic[columns]
                                
         else:
-            raise UnrecognizedColumnsInput(list( columns_dic.keys()))                      
-                               
+            raise UnrecognizedColumnsInput(list( columns_dic.keys())) 
+    
+    #Map receptive field using spike triggered averaging.
+    def spike_triggered_rf(
+            self, cluster,
+            enlarge = 1,
+            psize = 30.0,
+            psf = 0.02,
+            pph = 0.0,
+            pori = 0.0,
+
+    ):
+        # Get the index range for stim appearnce
+        stim_df = self.stim_data
+        stim_app_range = list(zip(
+            stim_df['stim_start_indicies'].values[:-1], 
+            stim_df['stim_start_indicies'].values[1:]))
+        stim_ranges = [
+            np.arange(r[0], r[1], 1) for r in stim_app_range
+        ]
+
+        spike_ind = self.spike_data[cluster]['spike_index']
+        final_start = stim_df['stim_start_indicies'].values[-1]
+        final_range = np.arange(final_start, spike_ind[-1], 1)
+        stim_ranges.append(final_range)
+
+        stim_df['index_range'] = stim_ranges
+        df = stim_df.explode('index_range')
+
+        # Find the stimulus parameters prior to each spike.
+        # By default, paremeters in stim_data will be used.
+        # User declared parameters can also be used and can
+        # either be passed as float values or 1d array-like 
+        # structures. If parameters are not found in stim_data
+        # or not passed by the user, default values for the
+        # parameters will be used.
+
+        first_stim = int(df.iloc[0]['stim_start_indicies'])
+        t = []
+
+        for i0, i in enumerate(spike_ind):
+            prior_i = i-1
+            if prior_i - first_stim < 0:
+                pass
+            else:
+                s = df.iloc[prior_i - first_stim]
+
+                # Size ######################## 
+                if 'Size' in df.columns.values:
+                    size = s['Size'] * enlarge
+                elif type(psize) == float:
+                    size = psize * enlarge
+                else:
+                    size = psize[i0] * enlarge
+
+                # Spatial frequency ############
+                if 'Spatial Freq' in df.columns.values:
+                    sf = s['Spatial Freq']
+                elif type(psf) == float:
+                    sf = psf
+                else:
+                    sf = psf[i0]
+
+                # Phase ########################
+                if 'Phase' in df.columns.values:
+                    ph = s['Phase']*360
+                elif type(pph) == float:
+                    ph = pph*360
+                else:
+                    pf = pph[i0]*360
+
+                # Orientation ##################
+                if 'Orientation' in df.columns.values:
+                    ori = s['Orientation']
+                elif type(pori) == float:
+                    ori = pori
+                else:
+                    ori = pori[i0]
+
+                # Make the pixel intensity matrix
+                m = ephys_toolkit.make_grating_matrix(
+                        sf, 
+                        ori, 
+                        ph, 
+                        dim = (50,50),
+                        radius = size,
+                        edge = 'discrete')
+
+                t.append(m)
+
+        sta = np.mean(np.array(t), axis = 0)
+        return sta  
+
 class load_project(ephys_toolkit):
     
     # initialize the load_project class with a full path to the
