@@ -558,58 +558,58 @@ class load_experiment(ephys_toolkit):
         t = []
 
         for i0, i in enumerate(spike_ind):
-            if corr = 'reverse':
+            if corr == 'reverse':
                 stim_i = i-1
-            if corr = 'forward:
+            elif corr == 'forward':
                 stim_i = i+1
                 
             if stim_i - first_stim < 0:
-                pass
+                continue
+                
+            s = df.iloc[stim_i - first_stim]
+
+            # Size ######################## 
+            if 'Size' in df.columns.values:
+                size = s['Size'] * enlarge
+            elif type(psize) == float:
+                size = psize * enlarge
             else:
-                s = df.iloc[stim_i - first_stim]
+                size = psize[i0] * enlarge
 
-                # Size ######################## 
-                if 'Size' in df.columns.values:
-                    size = s['Size'] * enlarge
-                elif type(psize) == float:
-                    size = psize * enlarge
-                else:
-                    size = psize[i0] * enlarge
+            # Spatial frequency ############
+            if 'Spatial Freq' in df.columns.values:
+                sf = s['Spatial Freq']
+            elif type(psf) == float:
+                sf = psf
+            else:
+                sf = psf[i0]
 
-                # Spatial frequency ############
-                if 'Spatial Freq' in df.columns.values:
-                    sf = s['Spatial Freq']
-                elif type(psf) == float:
-                    sf = psf
-                else:
-                    sf = psf[i0]
+            # Phase ########################
+            if 'Phase' in df.columns.values:
+                ph = s['Phase']*360
+            elif type(pph) == float:
+                ph = pph*360
+            else:
+                ph = pph[i0]*360
 
-                # Phase ########################
-                if 'Phase' in df.columns.values:
-                    ph = s['Phase']*360
-                elif type(pph) == float:
-                    ph = pph*360
-                else:
-                    ph = pph[i0]*360
+            # Orientation ##################
+            if 'Orientation' in df.columns.values:
+                ori = s['Orientation']
+            elif type(pori) == float:
+                ori = pori
+            else:
+                ori = pori[i0]
 
-                # Orientation ##################
-                if 'Orientation' in df.columns.values:
-                    ori = s['Orientation']
-                elif type(pori) == float:
-                    ori = pori
-                else:
-                    ori = pori[i0]
+            # Make the pixel intensity matrix
+            m = self.make_grating_matrix(
+                    sf, 
+                    ori, 
+                    ph, 
+                    dim = (50,50),
+                    radius = size,
+                    edge = 'discrete')
 
-                # Make the pixel intensity matrix
-                m = self.make_grating_matrix(
-                        sf, 
-                        ori, 
-                        ph, 
-                        dim = (50,50),
-                        radius = size,
-                        edge = 'discrete')
-
-                t.append(m)
+            t.append(m)
 
         sta = np.mean(np.array(t), axis = 0)
         return sta  
