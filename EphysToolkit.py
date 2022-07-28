@@ -521,6 +521,7 @@ class load_experiment(ephys_toolkit):
     #Map receptive field using spike triggered averaging.
     def spike_triggered_rf(
             self, cluster,
+            corr = 'reverse',
             enlarge = 1,
             psize = 30.0,
             psf = 0.02,
@@ -557,11 +558,15 @@ class load_experiment(ephys_toolkit):
         t = []
 
         for i0, i in enumerate(spike_ind):
-            prior_i = i-1
-            if prior_i - first_stim < 0:
+            if corr = 'reverse':
+                stim_i = i-1
+            if corr = 'forward:
+                stim_i = i+1
+                
+            if stim_i - first_stim < 0:
                 pass
             else:
-                s = df.iloc[prior_i - first_stim]
+                s = df.iloc[stim_i - first_stim]
 
                 # Size ######################## 
                 if 'Size' in df.columns.values:
@@ -585,7 +590,7 @@ class load_experiment(ephys_toolkit):
                 elif type(pph) == float:
                     ph = pph*360
                 else:
-                    pf = pph[i0]*360
+                    ph = pph[i0]*360
 
                 # Orientation ##################
                 if 'Orientation' in df.columns.values:
@@ -596,7 +601,7 @@ class load_experiment(ephys_toolkit):
                     ori = pori[i0]
 
                 # Make the pixel intensity matrix
-                m = ephys_toolkit.make_grating_matrix(
+                m = self.make_grating_matrix(
                         sf, 
                         ori, 
                         ph, 
