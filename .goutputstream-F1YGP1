@@ -2,14 +2,17 @@
 import sys
 import platform
 import re
-import json
-
 import numpy as np
+import json
 import scipy.io
 import pandas as pd
 from scipy import stats
 
-from pathexplorer.PathExplorer import path_explorer
+if platform.system() == 'Linux':
+    sys.path.append("/media/sf_DebianShared/custom_modules")
+if platform.system() == 'Windows':
+    sys.path.append(r"C:\Users\AE\Documents\DebianShared\custom_modules")
+from PathExplorer import path_explorer
 
 
 class ephys_toolkit:
@@ -36,97 +39,6 @@ class ephys_toolkit:
     
     def average_response(self, array, stim_reps):
         return (array/stim_reps)*self.frames
-    
-    def make_grating_matrix(
-            self,
-            sf, 
-            ori, 
-            ph, 
-            dim = tuple,
-            radius = int,
-            edge = 'discrete'):
-
-        edge_filt = {
-            'discrete': self.discrete_radius(dim, radius),
-            'gaussian': self.gaussian_radius(dim, radius)
-        }
-        filt = edge_filt[edge]
-
-        step = 20/dim[0]
-
-        x = np.arange(-10,10,step)
-        x = np.array([x for i in range(dim[0])])
-        y = x.T
-
-        fx = sf*np.cos(np.radians(ori))
-        fy = sf*np.sin(np.radians(ori))
-
-        m = np.cos(2*np.pi*fx*x + 2*np.pi*fy*y + np.radians(ph)*2*np.pi)
-
-        return m*filt
-
-    #make a drifting grating from a series of stationary gratings
-    def make_drifting_grating_matrix(
-            self, 
-            sf, 
-            ori, 
-            tf, 
-            dt, 
-            t, 
-            dim = tuple,
-            radius = int,
-            edge = 'discrete'):
-
-        tensor = []
-        params = []
-        deg_step = dt*360*tf
-
-        d = np.arange(dt,t,dt)
-
-        phase = 0
-        for x in d:
-            m = self.make_grating_matrix(
-                sf, 
-                ori, 
-                phase, 
-                dim,
-                radius,
-                edge)
-            tensor.append(m)
-            params.append([sf, tf, ori, phase])
-            phase+=deg_step 
-
-        return tensor, params
-
-    def discrete_radius(self, dim = tuple, radius  = int):
-        x, y = np.meshgrid(
-            np.linspace(-1,1, dim[0]), 
-            np.linspace(-1,1, dim[1])
-        )
-
-        m = []
-        for i0 in range(len(x)):
-            row = []
-            for i1 in range(len(y)):
-                if ((x[i0,i1]**2 + y[i0,i1]**2) 
-                    < ((radius/360)**2)):
-                        row.append(1)
-                else:
-                    row.append(0)
-            m.append(row)
-
-        return np.array(m)
-    
-    def gaussian_radius(self, dim = tuple, radius = int):
-        x, y = np.meshgrid(
-            np.linspace(-1,1, dim[0]), 
-            np.linspace(-1,1, dim[1])
-        )
-        d = np.sqrt(x*x+y*y)
-        sigma, mu = radius/360, 0.0
-        g = np.exp(-( (d-mu)**2 / ( 2.0 * sigma**2 ) ) )
-
-        return g
     
     def get_spike_sorting_metrics(self, file_directory):
         
@@ -186,7 +98,6 @@ class load_experiment(ephys_toolkit):
         self.spikes = spikes_mat['Data'][0]
         self.stims = stims_mat['StimulusData'][0][0]
         self.init_stim_data()
-        self.parameters_matched = False
         self.init_spike_data()
         self.get_event_times()
         
@@ -256,56 +167,6 @@ class load_experiment(ephys_toolkit):
             'stop': condition_stops
         }
 
-    def match_condition_parameters(self, params_file):
-        # regex to get the parameter names + values
-        name_identifier = r'Var\d{1,}Val'
-        val_identifier = r'var\d{1,}value'    
-
-        # load the parameter file and extract the keys
-        params = scipy.io.loadmat(params_file)
-        param_keys = list(params.keys())
-
-        # use regex to get the param names and values
-        name_keys = [key for key in param_keys if re.search(name_identifier, key)]
-        val_keys = [key for key in param_keys if re.search(val_identifier, key)]
-
-        # get the condition numbers
-        condition_range = len(params[val_keys[0]][0])
-        condition_ids = [i+1 for i in range(condition_range)]  
-
-        # map conditions to parameter values
-        parameter_map = {'condition': condition_ids}
-        for i in range(len(name_keys)):
-            parameter_name = str(params[name_keys[i]][0])
-            parameter_values = np.array(params[val_keys[i]][0])
-
-            parameter_map[parameter_name] = parameter_values  
-
-        # parameter dataframe + the original stim_data dataframe
-        self.parameter_map = pd.DataFrame(parameter_map)
-        df = self.stim_data
-
-        # get the parameters to insert into the original dataframe
-        insert = []
-        for cond  in df.stim_condition_ids.values:
-            arr = self.parameter_map.loc[self.parameter_map.condition == cond].values[0]
-            insert.append(arr)
-        insert = pd.DataFrame(insert, columns = self.parameter_map.columns.values)
-
-        # insert the parameter values into the original dataframe
-        df1 = df.join(insert)
-
-        # reset the stim_data attribute
-        self.stim_data = df1[
-            list([df.columns.values[0]])
-            + list(self.parameter_map.columns.values[1:]) 
-            + list(
-                df.columns.values[1:]
-            )
-        ]
-        
-        self.parameters_matched = True
-   
     def single_population_response_matrix(
             self,
             include_units,
@@ -395,48 +256,21 @@ class load_experiment(ephys_toolkit):
                 [con_df, df],
                 axis = 0, 
                 ignore_index = True)
-            
-        if self.parameters_matched == False:
-            # make a conditions column
-            bins_per_condition = len(np.arange(thresh_min, thresh_max, 1))
-            con_df_columns = list(con_df.columns)
-            conditions_column = []
-            for condition in self.stim_conditions:
-                conditions_column += [condition]*bins_per_condition
 
-            # arrange dataframe column order
-            con_df['stimulus_condition'] = np.array(conditions_column)
-            new_columns = ['stimulus_condition'] + con_df_columns
-            con_df = con_df[new_columns]
-            
-        
-        else: # repeat what's above while adding parameter columns    
+        # make a conditions column
+        bins_per_condition = len(np.arange(thresh_min, thresh_max, 1))
+        con_df_columns = list(con_df.columns)
+        conditions_column = []
+        for condition in self.stim_conditions:
+            conditions_column += [condition]*bins_per_condition
 
-            bins_per_condition = len(np.arange(thresh_min, thresh_max, 1))
-            con_df_columns = list(con_df.columns)
-            conditions_column = []
-            param_columns = []
-            
-            for condition in self.stim_conditions:
-                params = list(
-                    self.parameter_map.loc[self.parameter_map.condition == condition].values[0][1:]
-                )
-                conditions_column += [condition]*bins_per_condition
-                param_columns += [params]*bins_per_condition
-            param_columns = pd.DataFrame(
-                param_columns, columns = self.parameter_map.columns.values[1:]
-            )
-            
-            con_df['stimulus_condition'] = np.array(conditions_column)
-            con_df = con_df.join(param_columns)
-            new_columns = ['stimulus_condition'] + list(param_columns.columns.values) + con_df_columns
-            con_df = con_df[new_columns]
+        # arrange dataframe column order
+        con_df['stimulus_condition'] = np.array(conditions_column)
+        new_columns = ['stimulus_condition'] + con_df_columns
+        con_df = con_df[new_columns]
         
         return con_df
     
-    # needs to be cleaned up and optimized...but it works
-    # caching matricies that have already been generated 
-    # might be a good idea
     def get_population_response_matrix(
             self,
             include_units, 
@@ -469,33 +303,23 @@ class load_experiment(ephys_toolkit):
         else:
             raise UnrecognizedStimulusCondition()
         
-        
-        try: # remove the if statement when implementing caching
-            if columns != 'stimulus_condition':
-                stb_cid_col = None
-            else:
-                if self.parameters_matched == True:
-                    i = len(self.parameter_map.columns)
-                    c = list(stb.columns.values[i:])
-                    stb1 = stb[['stimulus_condition']+c]
-                else:
-                    stb1 = stb
+        try:
+            stb_cid_col = pd.melt(
 
-                stb_cid_col = pd.melt(
+                stb, 
+                id_vars=['stimulus_condition'], 
+                value_vars= stb.columns.values[1:]).pivot_table(
 
-                    stb1, 
-                    id_vars=['stimulus_condition'], 
-                    value_vars= stb1.columns.values[1:]).pivot_table(
+                    columns = 'stimulus_condition', 
+                    index = 'variable', 
+                    values = 'value', 
+                    aggfunc = list)
 
-                        columns = 'stimulus_condition', 
-                        index = 'variable', 
-                        values = 'value', 
-                        aggfunc = list)
-
-                stb_cid_col_reset = stb_cid_col.reset_index()
-                condition_list = list(stb_cid_col_reset.columns.values[1:])
-                stb_cid_col_reset.columns = ['cluster_id']+condition_list
-                stb_cid_col = stb_cid_col_reset.explode(condition_list).astype(float)
+            stb_cid_col_reset = stb_cid_col.reset_index()
+            condition_list = list(stb_cid_col_reset.columns.values[1:])
+            stb_cid_col_reset.columns = ['cluster_id']+condition_list
+            stb_cid_col = stb_cid_col_reset.explode(condition_list).astype(float)
+            
 
         except KeyError:
             if (single
@@ -513,104 +337,8 @@ class load_experiment(ephys_toolkit):
             return columns_dic[columns]
                                
         else:
-            raise UnrecognizedColumnsInput(list( columns_dic.keys())) 
-    
-    #Map receptive field using spike triggered averaging.
-    def spike_triggered_rf(
-            self, cluster,
-            corr = 'reverse',
-            enlarge = 1,
-            psize = 30.0,
-            psf = 0.02,
-            pph = 0.0,
-            pori = 0.0,
-
-    ):
-        # Get the index range for stim appearnce
-        stim_df = self.stim_data
-        stim_app_range = list(zip(
-            stim_df['stim_start_indicies'].values[:-1], 
-            stim_df['stim_start_indicies'].values[1:]))
-        stim_ranges = [
-            np.arange(r[0], r[1], 1) for r in stim_app_range
-        ]
-
-        spike_ind = self.spike_data[cluster]['spike_index']
-        final_start = stim_df['stim_start_indicies'].values[-1]
-        final_range = np.arange(final_start, spike_ind[-1], 1)
-        stim_ranges.append(final_range)
-
-        stim_df['index_range'] = stim_ranges
-        df = stim_df.explode('index_range')
-
-        # Find the stimulus parameters prior to each spike.
-        # By default, paremeters in stim_data will be used.
-        # User declared parameters can also be used and can
-        # either be passed as float values or 1d array-like 
-        # structures. If parameters are not found in stim_data
-        # or not passed by the user, default values for the
-        # parameters will be used.
-
-        first_stim = int(df.iloc[0]['stim_start_indicies'])
-        t = []
-
-        for i0, i in enumerate(spike_ind):
-            if corr == 'reverse':
-                stim_i = i-1
-            elif corr == 'forward':
-                stim_i = i+1
-                
-            if stim_i - first_stim < 0:
-                continue
-                
-            s = df.iloc[stim_i - first_stim]
-
-            # Size ######################## 
-            if 'Size' in df.columns.values:
-                size = s['Size'] * enlarge
-            elif type(psize) == float:
-                size = psize * enlarge
-            else:
-                size = psize[i0] * enlarge
-
-            # Spatial frequency ############
-            if 'Spatial Freq' in df.columns.values:
-                sf = s['Spatial Freq']
-            elif type(psf) == float:
-                sf = psf
-            else:
-                sf = psf[i0]
-
-            # Phase ########################
-            if 'Phase' in df.columns.values:
-                ph = s['Phase']*360
-            elif type(pph) == float:
-                ph = pph*360
-            else:
-                ph = pph[i0]*360
-
-            # Orientation ##################
-            if 'Orientation' in df.columns.values:
-                ori = s['Orientation']
-            elif type(pori) == float:
-                ori = pori
-            else:
-                ori = pori[i0]
-
-            # Make the pixel intensity matrix
-            m = self.make_grating_matrix(
-                    sf, 
-                    ori, 
-                    ph, 
-                    dim = (50,50),
-                    radius = size,
-                    edge = 'discrete')
-
-            t.append(m)
-
-        sta = np.mean(np.array(t), axis = 0)
-        return sta  
-
+            raise UnrecognizedColumnsInput(list( columns_dic.keys()))                      
+                               
 class load_project(ephys_toolkit):
     
     # initialize the load_project class with a full path to the
