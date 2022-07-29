@@ -17,11 +17,6 @@ class ephys_toolkit:
     def __init__(self):
         self.SAMPLING_RATE = 20000
     
-    """
-    Give a bin size relative to 1 second.
-    IE: If you want a 1 ms bin size, enter 0.001;
-    if you want a 10 ms bin size, enter 0.01 etc.
-    """
     def bin_events(self, bin_size, events):
         self.frames = bin_size**-1
         self.numerator = self.SAMPLING_RATE/self.frames
@@ -37,6 +32,11 @@ class ephys_toolkit:
     def average_response(self, array, stim_reps):
         return (array/stim_reps)*self.frames
     
+    """
+    Generate a matrix of pixel intensities   
+    representing a drifting grating stimulus
+    with the given parameters.
+    """
     def make_grating_matrix(
             self,
             sf, 
@@ -65,7 +65,10 @@ class ephys_toolkit:
 
         return m*filt
 
-    #make a drifting grating from a series of stationary gratings
+    """
+    Returns a list of matricies representing
+    frames of a drifitng grating stimulus.
+    """
     def make_drifting_grating_matrix(
             self, 
             sf, 
@@ -128,6 +131,10 @@ class ephys_toolkit:
 
         return g
     
+    """
+    Returns a dataframe with the spike sorting metrics
+    of a given recording section.
+    """
     def get_spike_sorting_metrics(self, file_directory):
         
         with open(file_directory, 'r') as sorting_file:
@@ -168,15 +175,29 @@ class ephys_toolkit:
                 i = np.where(np.logical_and(unthreshed <= thresh[1], unthreshed >= thresh[0]))
                 rasters.append(list(unthreshed[i]))
         return rasters
-
+    
+    """
+    Returns an array representing a raster of spike times centered 
+    around the onset times of a given stimulus.
+    """
     def make_raster(self, stims, spikes, thresh = tuple, concatenate = True):
         if concatenate == True:
             return self.concatenated_raster(stims, spikes, thresh)
         else:
             return self.unconcatenated_raster(stims, spikes, thresh)
 
+
 class load_experiment(ephys_toolkit):
+    """
+    Create an experiment object for a given recording block.
+    Takes the spike data file path as the first argument and the
+    stimulus data file path as the second argument. Initializing
+    an experiment object some important class attributes:
     
+    .stim_data: A pandas dataframe with the stimulus data.
+    .spike_data: A dictionary object with the spiking data
+                 of all the identified clusters.
+    """
     def __init__(self, spikefile, stimfile):
         ephys_toolkit.__init__(self)
         
@@ -186,14 +207,18 @@ class load_experiment(ephys_toolkit):
         self.spikes = spikes_mat['Data'][0]
         self.stims = stims_mat['StimulusData'][0][0]
         self.init_stim_data()
-        self.parameters_matched = False
         self.init_spike_data()
         self.get_event_times()
+        
+        self.parameters_matched = False
         
         self.stim_conditions = self.stim_data[
             'stim_condition_ids'
         ].unique()
     
+    """
+    Generates the .stim_data attribute.
+    """
     def init_stim_data(self):
         stims_starts = self.stims[0]
         stims_stops = self.stims[1]
@@ -206,7 +231,10 @@ class load_experiment(ephys_toolkit):
         }
         
         self.stim_data = pd.DataFrame(stim_data)
-        
+    
+    """
+    Generates the .spike_data attribute.
+    """
     def init_spike_data(self):
         
         self.spike_data = [
@@ -219,7 +247,13 @@ class load_experiment(ephys_toolkit):
             for unit in
             self.spikes
         ]
-    
+        
+    """
+    Change the time unit of the relative spike times.
+    Give a bin size relative to 1 second.
+    IE: If you want a 1 ms bin size, enter 0.001;
+    if you want a 10 ms bin size, enter 0.01 etc.
+    """
     def get_event_times(self, bin_size = 0.001):
         self.stim_data['stim_start_times'] = self.bin_events(bin_size, 
             self.stim_data['stim_start_indicies'].values)
@@ -241,6 +275,10 @@ class load_experiment(ephys_toolkit):
                     unit['spike_index'])
             }) 
     
+    """
+    Returns a dictionary object of the start times and
+    stop times of a particular stimulus condition.
+    """
     def get_condition_times(self, group):
         
         condition_starts = self.stim_data.groupby(
@@ -256,6 +294,11 @@ class load_experiment(ephys_toolkit):
             'stop': condition_stops
         }
 
+    """
+    Takes a parameters file and alters the .stim_data dataframe
+    to match stimulus condition parameters to thier corresponding 
+    condition id.
+    """
     def match_condition_parameters(self, params_file):
         # regex to get the parameter names + values
         name_identifier = r'Var\d{1,}Val'
@@ -434,9 +477,17 @@ class load_experiment(ephys_toolkit):
         
         return con_df
     
-    # needs to be cleaned up and optimized...but it works
-    # caching matricies that have already been generated 
-    # might be a good idea
+    """
+    Returns a dataframe of the population response PSTH.
+    By default, each column label represents the
+    included units. A single column identifies
+    the stimulus condition at each row.
+    
+    Setting columns = "stimulus_condition" will
+    return a data frame where each column label
+    represents a stimulus condition. A single
+    column identifes the included unit at each row.
+    """
     def get_population_response_matrix(
             self,
             include_units, 
@@ -514,8 +565,16 @@ class load_experiment(ephys_toolkit):
                                
         else:
             raise UnrecognizedColumnsInput(list( columns_dic.keys())) 
-    
-    #Map receptive field using spike triggered averaging.
+            
+    """
+    Map receptive field using spike triggered averaging.
+    By default, paremeters in stim_data will be used.
+    User declared parameters can also be used and can
+    either be passed as float values or 1d array-like 
+    structures. If parameters are not found in stim_data
+    or not passed by the user, default values for the
+    parameters will be used.
+    """
     def spike_triggered_rf(
             self, cluster,
             corr = 'reverse',
@@ -544,13 +603,6 @@ class load_experiment(ephys_toolkit):
         df = stim_df.explode('index_range')
 
         # Find the stimulus parameters prior to each spike.
-        # By default, paremeters in stim_data will be used.
-        # User declared parameters can also be used and can
-        # either be passed as float values or 1d array-like 
-        # structures. If parameters are not found in stim_data
-        # or not passed by the user, default values for the
-        # parameters will be used.
-
         first_stim = int(df.iloc[0]['stim_start_indicies'])
         t = []
 
@@ -613,8 +665,23 @@ class load_experiment(ephys_toolkit):
 
 class load_project(ephys_toolkit):
     
-    # initialize the load_project class with a full path to the
-    # directory containing the project files
+    """
+    Initialize the load_project class with a full path to the
+    directory containing the project files.
+    
+    The .workbook attribute contains a list of dictionaries
+    with the following structure:
+      [
+          {
+              'section_id': int,
+              'spike_sorting_metrics': dataframe,
+              'blocks': [
+                  {'block_id': int, 'experiment', experiment object}, 
+                  ]
+          },
+      [
+    """
+    
     def __init__(self, project_path):
         ephys_toolkit.__init__(self)
         self.ppath = project_path
