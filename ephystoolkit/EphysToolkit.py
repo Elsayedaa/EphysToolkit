@@ -11,44 +11,63 @@ from scipy import stats
 
 from pathexplorer.PathExplorer import path_explorer
 
-
 class ephys_toolkit:
     
     def __init__(self):
         self.SAMPLING_RATE = 20000
     
-    def bin_events(self, bin_size, events):
+    def _bin_events(self, bin_size, events):
         self.frames = bin_size**-1
         self.numerator = self.SAMPLING_RATE/self.frames
         
         return events/self.numerator
     
-    def minmax_norm(self, array):
+    def _minmax_norm(self, array):
+        """
+        Normalize an array with minmax normalization.
+        """
         return (array-array.min())/(array.max()-array.min())
     
-    def zscore_norm(self, array):
+    def _zscore_norm(self, array):
+        """
+        Normalize an array with z score normalization.
+        """
         return stats.zscore(array)
     
-    def average_response(self, array, stim_reps):
+    def _average_response(self, array, stim_reps):
+        """
+        Return the average frequency of a unit's response
+        across stimulus repeats.
+        """
         return (array/stim_reps)*self.frames
     
-    """
-    Generate a matrix of pixel intensities   
-    representing a drifting grating stimulus
-    with the given parameters.
-    """
-    def make_grating_matrix(
+    def static_grating(
             self,
-            sf, 
-            ori, 
-            ph, 
-            dim = tuple,
-            radius = int,
-            edge = 'discrete'):
-
+            sf, # Spatial frequency - pass as a floating point value
+            ori, # Orientation - pass as a degree value
+            ph, # Phase - pass as a degree value
+            dim = tuple, # Stimulus dimensions - pass as a tuple
+            radius = int, # Stimulus radius - pass as a degree value
+            edge = 'discrete' # Stimulus edge style - pass either 'discrete' or 'gaussian'
+            ):
+        """
+        Generate a matrix of pixel intensities   
+        representing a static grating stimulus
+        with the given parameters.
+        
+        Args:
+        
+        - sf: Spatial frequency - pass as a floating point value.
+        - ori: Orientation - pass as a degree value.
+        - ph: Phase - pass as a degree value.
+        - dim: Stimulus dimensions - pass as a tuple.
+        - radius: Stimulus radius - pass as a degree value.
+        - edge: Stimulus edge style - pass either 'discrete' or 'gaussian'.
+        """
+        
         edge_filt = {
-            'discrete': self.discrete_radius(dim, radius),
-            'gaussian': self.gaussian_radius(dim, radius)
+            'discrete': self._discrete_radius(dim, radius),
+            'gaussian': self._gaussian_radius(dim, radius)
         }
         filt = edge_filt[edge]
 
@@ -65,21 +84,34 @@ class ephys_toolkit:
 
         return m*filt
 
-    """
-    Returns a list of matricies representing
-    frames of a drifitng grating stimulus.
-    """
-    def make_drifting_grating_matrix(
+    def drifting_grating(
             self, 
-            sf, 
-            ori, 
-            tf, 
-            dt, 
-            t, 
-            dim = tuple,
-            radius = int,
-            edge = 'discrete'):
-
+            sf,  # Spatial frequency - pass as a floating point value
+            ori,  # Orientation - pass as a degree value
+            tf,  # Temporal frequency - pass as an integer or floating point value
+            dt,  # Time step value - pass as a floating point value
+            t,  # Total duration of the stimulus - pass as an int or float of the appropriate time unit
+            dim = tuple,  # Stimulus dimensions - pass as a tuple
+            radius = int,  # Stimulus radius - pass as a degree value
+            edge = 'discrete'  # Stimulus edge style - pass either 'discrete' or 'gaussian'
+            ):
+        """
+        Returns a list of matricies representing
+        frames of a drifitng grating stimulus.
+        
+        Args:
+        
+        - sf: Spatial frequency - pass as a floating point value.
+        - ori: Orientation - pass as a degree value.
+        - tf: Temporal frequency - pass as an integer or floating point value.
+        - dt: Time step value - pass as a floating point value.
+        - t: Total duration of the stimulus - pass as an int or float of the appropriate time unit.
+        - dim: timulus dimensions - pass as a tuple.
+        - radius: Stimulus radius - pass as a degree value.
+        - edge: Stimulus edge style - pass either 'discrete' or 'gaussian'.
+        
+        """
+        
         tensor = []
         params = []
         deg_step = dt*360*tf
@@ -88,7 +120,7 @@ class ephys_toolkit:
 
         phase = 0
         for x in d:
-            m = self.make_grating_matrix(
+            m = self.static_grating(
                 sf, 
                 ori, 
                 phase, 
@@ -101,7 +133,7 @@ class ephys_toolkit:
 
         return tensor, params
 
-    def discrete_radius(self, dim = tuple, radius  = int):
+    def _discrete_radius(self, dim = tuple, radius  = int):
         x, y = np.meshgrid(
             np.linspace(-1,1, dim[0]), 
             np.linspace(-1,1, dim[1])
@@ -120,7 +152,7 @@ class ephys_toolkit:
 
         return np.array(m)
     
-    def gaussian_radius(self, dim = tuple, radius = int):
+    def _gaussian_radius(self, dim = tuple, radius = int):
         x, y = np.meshgrid(
             np.linspace(-1,1, dim[0]), 
             np.linspace(-1,1, dim[1])
@@ -131,13 +163,17 @@ class ephys_toolkit:
 
         return g
     
-    """
-    Returns a dataframe with the spike sorting metrics
-    of a given recording section.
-    """
-    def get_spike_sorting_metrics(self, file_directory):
+    def spike_sorting_metrics(self, file_path):
+        """
+        Returns a dataframe with the spike sorting metrics
+        of a given recording section.
         
-        with open(file_directory, 'r') as sorting_file:
+        Args:
+        
+        - file_path: Path to the spike sorting metrics file.
+        """
+        
+        with open(file_path, 'r') as sorting_file:
             sorting_info = json.load(sorting_file)
         
         spike_sorting_data = [
@@ -155,7 +191,7 @@ class ephys_toolkit:
         return ss_df
           
     #functions to make concatenated across trial and non concatenated across trial rasters
-    def concatenated_raster(self, stims, spikes, thresh = tuple):
+    def _concatenated_raster(self, stims, spikes, thresh = tuple):
         if thresh == tuple:
             r = np.array([spikes-st for st in stims])
             raster = np.concatenate(r)
@@ -165,7 +201,7 @@ class ephys_toolkit:
             raster = r[ti]
         return raster
 
-    def unconcatenated_raster(self, stims, spikes, thresh = tuple):
+    def _unconcatenated_raster(self, stims, spikes, thresh = tuple):
         if thresh == tuple:
             rasters = np.array([spikes-st for st in stims])
         else:
@@ -176,15 +212,30 @@ class ephys_toolkit:
                 rasters.append(list(unthreshed[i]))
         return rasters
     
-    """
-    Returns an array representing a raster of spike times centered 
-    around the onset times of a given stimulus.
-    """
-    def make_raster(self, stims, spikes, thresh = tuple, concatenate = True):
+    def raster(
+            self, 
+            stims, # Array of stimulus onset times
+            spikes, # Array of spike onset times
+            thresh = tuple, # Bounding threshold around the stimulus onset at t = 0 - pass as a tuple
+            concatenate = True # Concatenate rasters across trials - pass False to return unconcatenated rasters
+            ):
+        """
+        Returns an array representing a raster of spike times centered 
+        around the onset times of a given stimulus.
+        
+        Args:
+        
+        - stims: Array of stimulus onset times.
+        - spikes: Array of spike onset times.
+        - thresh: Bounding threshold around the stimulus onset at t = 0 - pass as a tuple.
+        - concatenate: Concatenate rasters across trials; pass False to return unconcatenated rasters.
+        
+        """       
+        
         if concatenate == True:
-            return self.concatenated_raster(stims, spikes, thresh)
+            return self._concatenated_raster(stims, spikes, thresh)
         else:
-            return self.unconcatenated_raster(stims, spikes, thresh)
+            return self._unconcatenated_raster(stims, spikes, thresh)
 
 
 class load_experiment(ephys_toolkit):
@@ -192,12 +243,19 @@ class load_experiment(ephys_toolkit):
     Create an experiment object for a given recording block.
     Takes the spike data file path as the first argument and the
     stimulus data file path as the second argument. Initializing
-    an experiment object some important class attributes:
+    an experiment object generates some important class attributes:
     
     .stim_data: A pandas dataframe with the stimulus data.
+    
     .spike_data: A dictionary object with the spiking data
                  of all the identified clusters.
+                 
+    Args:
+    
+    - spikefile: Path to the spike data file.
+    - stimfile: Path to the stimulus data file.
     """
+    
     def __init__(self, spikefile, stimfile):
         ephys_toolkit.__init__(self)
         
@@ -206,9 +264,9 @@ class load_experiment(ephys_toolkit):
         
         self.spikes = spikes_mat['Data'][0]
         self.stims = stims_mat['StimulusData'][0][0]
-        self.init_stim_data()
-        self.init_spike_data()
-        self.get_event_times()
+        self._init_stim_data()
+        self._init_spike_data()
+        self.set_time_unit()
         
         self.parameters_matched = False
         
@@ -216,10 +274,9 @@ class load_experiment(ephys_toolkit):
             'stim_condition_ids'
         ].unique()
     
-    """
-    Generates the .stim_data attribute.
-    """
-    def init_stim_data(self):
+    # Generates the .stim_data attribute.
+    def _init_stim_data(self):
+        
         stims_starts = self.stims[0]
         stims_stops = self.stims[1]
         stims_condition_ids = self.stims[2]
@@ -231,11 +288,12 @@ class load_experiment(ephys_toolkit):
         }
         
         self.stim_data = pd.DataFrame(stim_data)
+        """
+        A pandas dataframe with the stimulus data.
+        """
     
-    """
-    Generates the .spike_data attribute.
-    """
-    def init_spike_data(self):
+    # Generates the .spike_data attribute.
+    def _init_spike_data(self):
         
         self.spike_data = [
             {
@@ -247,18 +305,26 @@ class load_experiment(ephys_toolkit):
             for unit in
             self.spikes
         ]
+        """
+        A dictionary object with the spiking data.
+        """
         
-    """
-    Change the time unit of the relative spike times.
-    Give a bin size relative to 1 second.
-    IE: If you want a 1 ms bin size, enter 0.001;
-    if you want a 10 ms bin size, enter 0.01 etc.
-    """
-    def get_event_times(self, bin_size = 0.001):
-        self.stim_data['stim_start_times'] = self.bin_events(bin_size, 
+    def set_time_unit(self, bin_size = 0.001):
+        """
+        Change the time unit of the relative spike times.
+        Give a bin size relative to 1 second.
+        IE: If you want a 1 ms bin size, enter 0.001;
+        if you want a 10 ms bin size, enter 0.01 etc.
+        
+        Args:
+        
+        - bin_size: Time unit given relative to 1 second. The default unit is 1ms/0.001s.
+        """
+        
+        self.stim_data['stim_start_times'] = self._bin_events(bin_size, 
             self.stim_data['stim_start_indicies'].values)
         
-        self.stim_data['stim_stop_times'] = self.bin_events(bin_size, 
+        self.stim_data['stim_stop_times'] = self._bin_events(bin_size, 
             self.stim_data['stim_stop_indicies'].values)
         
         self.stim_data = self.stim_data[
@@ -271,35 +337,44 @@ class load_experiment(ephys_toolkit):
         
         for unit in self.spike_data:
             unit.update({
-                'rel_spike_time': self.bin_events(bin_size, 
+                'rel_spike_time': self._bin_events(bin_size, 
                     unit['spike_index'])
             }) 
     
-    """
-    Returns a dictionary object of the start times and
-    stop times of a particular stimulus condition.
-    """
-    def get_condition_times(self, group):
+    def condition_times(self, condition):
+        """
+        Returns a dictionary object of the start times and
+        stop times of a particular stimulus condition.
+        
+        Args:
+        
+        -condition: Condition id for the chosen stimulus condition.
+        """       
         
         condition_starts = self.stim_data.groupby(
             self.stim_data.stim_condition_ids
-        ).get_group(group)['stim_start_times'].values
+        ).get_group(condition)['stim_start_times'].values
         
         condition_stops = self.stim_data.groupby(
             self.stim_data.stim_condition_ids
-        ).get_group(group)['stim_stop_times'].values
+        ).get_group(condition)['stim_stop_times'].values
         
         return {
             'start': condition_starts,
             'stop': condition_stops
         }
 
-    """
-    Takes a parameters file and alters the .stim_data dataframe
-    to match stimulus condition parameters to thier corresponding 
-    condition id.
-    """
     def match_condition_parameters(self, params_file):
+        """
+        Takes a parameters file and alters the .stim_data dataframe
+        to match stimulus condition parameters to their corresponding 
+        condition id.
+        
+        Args:
+        
+        - params_file: Path to the stimulus parameters file.
+        """
+        
         # regex to get the parameter names + values
         name_identifier = r'Var\d{1,}Val'
         val_identifier = r'var\d{1,}value'    
@@ -349,9 +424,9 @@ class load_experiment(ephys_toolkit):
         
         self.parameters_matched = True
    
-    def single_population_response_matrix(
+    def _single_population_response(
             self,
-            include_units,
+            include_units, 
             stim_condition_start_times,
             thresh = None,
             norm = None):
@@ -369,7 +444,7 @@ class load_experiment(ephys_toolkit):
 
             unit = self.spike_data[i]
             cluster_id = i
-            x = self.make_raster(stim_condition_start_times, unit['rel_spike_time'], thresh = thresh)
+            x = self.raster(stim_condition_start_times, unit['rel_spike_time'], thresh = thresh)
             h, bins = np.histogram(x, bins = np.arange(
                 thresh_min,
                 thresh_max,
@@ -382,9 +457,9 @@ class load_experiment(ephys_toolkit):
                 
             else:
                 norm_method = {
-                    'minmax': self.minmax_norm(h), 
-                    'zscore': self.zscore_norm(h),
-                    'average' :self.average_response(h, len(stim_condition_start_times))
+                    'minmax': self._minmax_norm(h), 
+                    'zscore': self._zscore_norm(h),
+                    'average' :self._average_response(h, len(stim_condition_start_times))
                 }
 
                 if norm == None:
@@ -395,7 +470,7 @@ class load_experiment(ephys_toolkit):
                     h = norm_method[norm]
                     feedback = f"Population response matrix generated with {norm.upper()} NORMALIZATION."
                 else:
-                    raise UnrecognizedNorm(
+                    raise _UnrecognizedNorm(
                         f"Normalization method is not recognized, please choose from the following: {list(norm_method.keys())}"
                     )
 
@@ -405,15 +480,15 @@ class load_experiment(ephys_toolkit):
         
         return stb
     
-    def joint_population_response_matrix(self, include_units, thresh, norm):
+    def _joint_population_response(self, include_units, thresh, norm):
         # get the population response matrix for the first stim condition
         thresh_min = thresh[0]
         thresh_max = thresh[1]
         
-        first_stim_start_times = self.get_condition_times(
+        first_stim_start_times = self.condition_times(
             self.stim_conditions[0])['start']
 
-        con_df = self.single_population_response_matrix(
+        con_df = self._single_population_response(
             include_units, 
             first_stim_start_times, 
             thresh = (thresh_min, thresh_max), 
@@ -425,10 +500,10 @@ class load_experiment(ephys_toolkit):
         # concatenate the population response matricies for the
         # remaining stim conditions
         for condition in remaining_stim_conditions:
-            stim_start_times = self.get_condition_times(
+            stim_start_times = self.condition_times(
                 condition)['start']
 
-            df = self.single_population_response_matrix(
+            df = self._single_population_response(
                 include_units, 
                 stim_start_times, 
                 thresh = (thresh_min, thresh_max), 
@@ -477,32 +552,44 @@ class load_experiment(ephys_toolkit):
         
         return con_df
     
-    """
-    Returns a dataframe of the population response PSTH.
-    By default, each column label represents the
-    included units. A single column identifies
-    the stimulus condition at each row.
-    
-    Setting columns = "stimulus_condition" will
-    return a data frame where each column label
-    represents a stimulus condition. A single
-    column identifes the included unit at each row.
-    """
-    def get_population_response_matrix(
+    def population_response(
             self,
-            include_units, 
-            stim_condition = None,
-            columns = 'cluster_id',
-            thresh = None, 
-            norm = None):
+            include_units, # Units to include in the dataframe
+            stim_condition = None, # Stimulus condition(s) to include in the dataframe
+            columns = 'cluster_id', # Set column label arrangement
+            thresh = None, # Bounding threshold around the stimulus onset at t = 0 - pass as a tuple
+            norm = None # Normalization method - choose from: 'minmax', 'zscore', or 'average'
+            ):
+        """
+        Returns a dataframe of the population response PSTH.
+        By default, each column label represents the
+        included units. A single column identifies
+        the stimulus condition at each row. Each row is the
+        average response at each time step.
+
+        Setting columns = "stimulus_condition" will
+        return a data frame where each column label
+        represents a stimulus condition. A single
+        column identifes the included unit at each row.
+        Each row is the average response at each time step.
         
+        Args:
+        
+        - include_units: Units to include in the dataframe - pass as a 1d array or list like object.
+        - stim_condition: Stimulus condition(s) to include in the dataframe - 
+          pass a condition id or 'all' to include all conditions.
+        - columns: Set column label arrangement - pass either 'cluster_id' or 'stimulus_condition'. 
+          Default argument is 'stimulus_condition'.
+        - thresh: Bounding threshold around the stimulus onset at t = 0 - pass as a tuple.
+        - norm: Normalization method - pass either 'minmax', 'zscore', or 'average'.
+        """        
         
         if stim_condition == None:
-            raise NoStimulusCondition()
+            raise _NoStimulusCondition()
             
         elif stim_condition == 'all':
             single = False
-            stb = self.joint_population_response_matrix(
+            stb = self._joint_population_response(
                 include_units,
                 thresh,
                 norm)
@@ -510,15 +597,15 @@ class load_experiment(ephys_toolkit):
         elif stim_condition in self.stim_conditions:
             single = True
                 
-            stim_start_times = self.get_condition_times(stim_condition)['start']
+            stim_start_times = self.condition_times(stim_condition)['start']
             
-            stb = self.single_population_response_matrix(
+            stb = self._single_population_response(
                 include_units,
                 stim_start_times,
                 thresh,
                 norm)
         else:
-            raise UnrecognizedStimulusCondition()
+            raise _UnrecognizedStimulusCondition()
         
         
         try: # remove the if statement when implementing caching
@@ -564,17 +651,8 @@ class load_experiment(ephys_toolkit):
             return columns_dic[columns]
                                
         else:
-            raise UnrecognizedColumnsInput(list( columns_dic.keys())) 
+            raise _UnrecognizedColumnsInput(list( columns_dic.keys())) 
             
-    """
-    Map receptive field using spike triggered averaging.
-    By default, paremeters in stim_data will be used.
-    User declared parameters can also be used and can
-    either be passed as float values or 1d array-like 
-    structures. If parameters are not found in stim_data
-    or not passed by the user, default values for the
-    parameters will be used.
-    """
     def spike_triggered_rf(
             self, cluster,
             corr = 'reverse',
@@ -585,6 +663,32 @@ class load_experiment(ephys_toolkit):
             pori = 0.0,
 
     ):
+        """
+        Map receptive field using spike triggered averaging.
+        By default, paremeters in the .stim_data attribute will 
+        be used. If .stim_data is missing parameters, user declared 
+        parameters can be passed as float values (static parameter)
+        or 1d array-like structures (dynamic parameters). If parameters 
+        are not found in .stim_data or not passed by the user, 
+        default static values for the parameters will be used.
+        
+        Args:
+        
+        - cluster: Cluster id.
+        - corr: Stimulus order correlation method - pass either 'reverse' or 'forward'.
+          Default argument is 'revers.
+        - enlarge: Scale by which to enlarge the stimulus for viewability purposes.
+          Default argument is 1.
+        - psize: Radius of the stimulus - pass as a degree value.
+          Default argument is 30.
+        - psf: Spatial frequency - pass as a floating point value.
+          Default argument is 0.02.
+        - pph: Phase - pass as a percentage value between 0 - 1.
+          Default argument is 0.
+        - pori: Orientation - pass as a degree value.
+          Default argument is 0.
+        """
+        
         # Get the index range for stim appearnce
         stim_df = self.stim_data
         stim_app_range = list(zip(
@@ -650,7 +754,7 @@ class load_experiment(ephys_toolkit):
                 ori = pori[i0]
 
             # Make the pixel intensity matrix
-            m = self.make_grating_matrix(
+            m = self.static_grating(
                     sf, 
                     ori, 
                     ph, 
@@ -664,31 +768,41 @@ class load_experiment(ephys_toolkit):
         return sta  
 
 class load_project(ephys_toolkit):
-    
     """
     Initialize the load_project class with a full path to the
     directory containing the project files.
     
     The .workbook attribute contains a list of dictionaries
     with the following structure:
-      [
+    
+
+      
           {
+          
               'section_id': int,
+              
               'spike_sorting_metrics': dataframe,
+              
               'blocks': [
-                  {'block_id': int, 'experiment', experiment object}, 
+              
+                  {'block_id': int, 'experiment', experiment object},
+                  
                   ]
+                  
           },
-      [
+    
+    Args:
+    
+    - project_path: Path to the directory containing the project files.
     """
     
     def __init__(self, project_path):
         ephys_toolkit.__init__(self)
         self.ppath = project_path
-        self.gen_project_workbook()
+        self._init_project_workbook()
     
     # generate the workbook of project data
-    def gen_project_workbook(self):
+    def _init_project_workbook(self):
         explorer = path_explorer()
         
         # find and sort spike files
@@ -713,7 +827,7 @@ class load_project(ephys_toolkit):
         # compile spike sorting metrics first
         for metrics_file in metrics_files:
             section_parent = int(re.search(r'Section_(\d{1,})', metrics_file).group(1))
-            df = self.get_spike_sorting_metrics(metrics_file)
+            df = self.spike_sorting_metrics(metrics_file)
 
             self.workbook.append(
                 {
@@ -736,7 +850,7 @@ class load_project(ephys_toolkit):
             })
     
 #Class Errors
-class UnrecognizedNorm(Exception):
+class _UnrecognizedNorm(Exception):
     """
     Exception raised for unrecognized user input
     for array normalization.
@@ -745,11 +859,11 @@ class UnrecognizedNorm(Exception):
         self.message = message
         super().__init__(self.message)
 
-class NoStimulusCondition(Exception):
+class _NoStimulusCondition(Exception):
     """
     Exception raised for no user input in the
     stim_condition argument in the 
-    self.get_population_response_matrix method.
+    self.population_response method.
     """
     def __init__(self):
         self.message = """
@@ -758,11 +872,11 @@ class NoStimulusCondition(Exception):
         """
         super().__init__(self.message)
 
-class UnrecognizedStimulusCondition(Exception):
+class _UnrecognizedStimulusCondition(Exception):
     """
     Exception raised for invalid user input in the
     stim_condition argument in the 
-    self.get_population_response_matrix method.
+    self.population_response method.
     """
     def __init__(self):
         self.message = """
@@ -771,11 +885,11 @@ class UnrecognizedStimulusCondition(Exception):
         """
         super().__init__(self.message)
                                
-class UnrecognizedColumnsInput(Exception):
+class _UnrecognizedColumnsInput(Exception):
     """
     Exception raised for invalid user input in the
     columns argument in the 
-    self.get_population_response_matrix method.
+    self.population_response method.
     """
     def __init__(self, arg):
         self.message = f"""
