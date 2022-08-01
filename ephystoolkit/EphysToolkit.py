@@ -497,7 +497,7 @@ class load_experiment(ephys_toolkit):
                     )
 
             # append condition ids to the conditions column
-            cond_col += [condition]*len(h)
+            cond_col += [int(condition)]*len(h)
 
             # append condition parameters
             if self.parameters_matched:
@@ -558,7 +558,7 @@ class load_experiment(ephys_toolkit):
             thresh_max = thresh[1] + 0.5
 
         if stim_condition is 'all':
-            stim_condition = self.stim_conditions
+            stim_condition = np.sort(self.stim_conditions)
 
         population = {}
         unit_col = []
@@ -608,10 +608,10 @@ class load_experiment(ephys_toolkit):
 
                 # fill the population dictionary
                 if condition not in population:
-                    population[condition] = h
+                    population[int(condition)] = h
                 else:
                     population[condition] = np.concatenate(
-                        (population[condition], h)
+                        (population[int(condition)], h)
                     )
 
             # append condition ids to the conditions column
