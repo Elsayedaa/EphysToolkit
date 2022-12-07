@@ -1,6 +1,8 @@
 # class imports
 import re
+import math
 import json
+import warnings
 
 import numpy as np
 import scipy.io
@@ -39,16 +41,16 @@ class ephys_toolkit:
         across stimulus repeats.
         """
         return (array / stim_reps) * self.frames
-
+    
     def static_grating(
             self,
-            sf,  # Spatial frequency - pass as a floating point value
-            ori,  # Orientation - pass as a degree value
-            ph,  # Phase - pass as a degree value
-            dim=tuple,  # Stimulus dimensions - pass as a tuple
-            radius=int,  # Stimulus radius - pass as a degree value
-            edge='discrete'  # Stimulus edge style - pass either 'discrete' or 'gaussian'
-    ):
+            windowSizeX_Pixel, windowSizeY_Pixel, # size of the stimulus window in pixels
+            windowSizeX_Visual, windowSizeY_Visual, # size of the stimulus window in degrees
+            spatialFrequency, # spatial frequency in cpd
+            ang, # orientation angle of the grating in degrees
+            phi, # phase of the grating in degrees
+            diameter = None # dimater of the circular patch in degrees
+    ):    
         """
         Generate a matrix of pixel intensities   
         representing a static grating stimulus
@@ -56,58 +58,91 @@ class ephys_toolkit:
         
         Args:
         
-        - sf: Spatial frequency - pass as a floating point value.
-        - ori: Orientation - pass as a degree value.
-        - ph: Phase - pass as a degree value.
-        - dim: Stimulus dimensions - pass as a tuple.
-        - radius: Stimulus radius - pass as a degree value.
-        - edge: Stimulus edge style - pass either 'discrete' or 'gaussian'.
+        - windowSizeX_Pixel: Horizontal size of the stimulus screen in pixels.
+        - windowSizeY_Pixel: Vertical size of the stimulus screen in pixels.
+        - windowSizeX_Visual: Horizontal size of the stimulus screen in degrees.
+        - windowSizeY_Visual: Vertical size of the stimulus screen in degrees.
+        - spatialFrequency: Spatial frequency in cycles per degre (cpd).
+        - ang: Orientation angle of the grating in degrees.
+        - phi: Phase of the grating in degrees
+        - diameter: Dimater of the circular patch in degrees. 
         """
+        
+        if ((windowSizeX_Pixel <=10)
+            or (windowSizeX_Pixel%2 != 0)
+        ):
+            print('windowSizeX_Pixel must be greater than ten and even')
 
-        edge_filt = {
-            'discrete': self._discrete_radius(dim, radius),
-            'gaussian': self._gaussian_radius(dim, radius)
-        }
-        filt = edge_filt[edge]
+        if ((windowSizeY_Pixel <=10)
+            or (windowSizeY_Pixel%2 != 0)
+        ):
+            print('windowSizeY_Pixel must be greater than ten and even')
 
-        step = 20 / dim[0]
+        if (math.floor(windowSizeX_Pixel/windowSizeY_Pixel*1000) 
+            != math.floor(windowSizeX_Visual/windowSizeY_Visual*1000)
+        ):
+            print('The ratio of X and Y for Pixel and Visual are different!');
 
-        x = np.arange(-10, 10, step)
-        x = np.array([x for i in range(dim[0])])
-        y = x.T
+        if spatialFrequency < 0:
+            error('spatialFrequency less than zero')
 
-        fx = sf * np.cos(np.radians(ori))
-        fy = sf * np.sin(np.radians(ori))
+        # x, y 
+        x_center = windowSizeX_Pixel/2
+        y_center = windowSizeY_Pixel/2
 
-        m = np.cos(2 * np.pi * fx * x + 2 * np.pi * fy * y + np.radians(ph) * 2 * np.pi)
+        x_range = np.arange(-x_center, x_center,1)
+        y_range = np.arange(-y_center, y_center,1)
+        x, y = np.meshgrid(x_range,y_range)
 
-        return m * filt
+        # theta
+        theta = -np.radians(ang);
+        xyTheta = y * np.cos(theta) - x * np.sin(theta);
+
+        # Spatial Frenquency
+        degreePerPixel = windowSizeX_Visual / windowSizeX_Pixel
+        sf = spatialFrequency  * degreePerPixel # cycles / pixel
+        sw = 2 * np.pi * sf # radian / pixel
+
+        # contrast
+        pixelIntensity = (np.sin(sw * xyTheta - phi)) # range: -1 to 1
+
+        # round image
+        if diameter == None:
+            pass
+        else:
+            diameter = diameter / degreePerPixel
+            r = diameter/2;
+            c_mask = ( (x**2+y**2) <= r**2 )
+            pixelIntensity = pixelIntensity*c_mask 
+
+        return pixelIntensity
 
     def drifting_grating(
             self,
-            sf,  # Spatial frequency - pass as a floating point value
-            ori,  # Orientation - pass as a degree value
+            windowSizeX_Pixel, windowSizeY_Pixel, # size of the stimulus window in pixels
+            windowSizeX_Visual, windowSizeY_Visual, # size of the stimulus window in degrees
             tf,  # Temporal frequency - pass as an integer or floating point value
             dt,  # Time step value - pass as a floating point value
             t,  # Total duration of the stimulus - pass as an int or float of the appropriate time unit
-            dim=tuple,  # Stimulus dimensions - pass as a tuple
-            radius=int,  # Stimulus radius - pass as a degree value
-            edge='discrete'  # Stimulus edge style - pass either 'discrete' or 'gaussian'
+            spatialFrequency, # spatial frequency in cpd
+            ang, # orientation angle of the grating in degrees
+            diameter = None # dimater of the circular patch in degrees
     ):
         """
         Returns a list of matricies representing
         frames of a drifitng grating stimulus.
         
         Args:
-        
-        - sf: Spatial frequency - pass as a floating point value.
-        - ori: Orientation - pass as a degree value.
+        - windowSizeX_Pixel: Horizontal size of the stimulus screen in pixels.
+        - windowSizeY_Pixel: Vertical size of the stimulus screen in pixels.
+        - windowSizeX_Visual: Horizontal size of the stimulus screen in degrees.
+        - windowSizeY_Visual: Vertical size of the stimulus screen in degrees.    
         - tf: Temporal frequency - pass as an integer or floating point value.
         - dt: Time step value - pass as a floating point value.
         - t: Total duration of the stimulus - pass as an int or float of the appropriate time unit.
-        - dim: timulus dimensions - pass as a tuple.
-        - radius: Stimulus radius - pass as a degree value.
-        - edge: Stimulus edge style - pass either 'discrete' or 'gaussian'.
+        - spatialFrequency: Spatial frequency in cycles per degre (cpd).
+        - ang: Orientation angle of the grating in degrees.
+        - diameter: Dimater of the circular patch in degrees. 
         
         """
 
@@ -117,39 +152,39 @@ class ephys_toolkit:
 
         d = np.arange(dt, t, dt)
 
-        phase = 0
+        phi = 0
         for x in d:
             m = self.static_grating(
-                sf,
-                ori,
-                phase,
-                dim,
-                radius,
-                edge)
+                windowSizeX_Pixel, windowSizeY_Pixel, 
+                windowSizeX_Visual, windowSizeY_Visual, 
+                spatialFrequency,
+                ang,
+                phi,
+                diameter = diameter
+            ) 
             tensor.append(m)
             params.append([sf, tf, ori, phase])
-            phase += deg_step
+            phi += deg_step
 
         return tensor, params
 
     def _discrete_radius(self, dim=tuple, radius=int):
-        x, y = np.meshgrid(
-            np.linspace(-1, 1, dim[0]),
-            np.linspace(-1, 1, dim[1])
-        )
+        x = np.linspace(-1, 1, dim[1])
+        y = np.linspace(-1, 1, dim[0])
+        
 
         m = []
         for i0 in range(len(x)):
             row = []
             for i1 in range(len(y)):
-                if ((x[i0, i1] ** 2 + y[i0, i1] ** 2)
+                if ((x[i0] ** 2 + y[i1] ** 2)
                         < ((radius / 360) ** 2)):
                     row.append(1)
                 else:
                     row.append(0)
             m.append(row)
 
-        return np.array(m)
+        return np.array(m).T
 
     def _gaussian_radius(self, dim=tuple, radius=int):
         x, y = np.meshgrid(
@@ -255,7 +290,7 @@ class load_experiment(ephys_toolkit):
     - stimfile: Path to the stimulus data file.
     """
 
-    def __init__(self, spikefile, stimfile):
+    def __init__(self, spikefile, stimfile, logfile):
         ephys_toolkit.__init__(self)
 
         spikes_mat = scipy.io.loadmat(spikefile)
@@ -263,6 +298,7 @@ class load_experiment(ephys_toolkit):
 
         self.spikes = spikes_mat['Data'][0]
         self.stims = stims_mat['StimulusData'][0][0]
+        self.logfile = logfile
         self._init_stim_data()
         self._init_spike_data()
         self.set_time_unit()
@@ -272,6 +308,18 @@ class load_experiment(ephys_toolkit):
         self.stim_conditions = self.stim_data[
             'stim_condition_ids'
         ].unique()
+        
+        if self.logfile != None:
+            self._get_conditions_from_log()
+        else:
+            r = r'([A-Z]{1,2}_M\d{1,}_Section_\d{1,}_BLK\d{1,})'
+            experiment_id = re.search(r, spikefile).group(1)
+            warn_text = f"""
+            No stimulus log file found for experiment: {experiment_id}.
+            If this experiment has more that 255 stimulus conditions, the stimulus 
+            condition IDs will be incorrect in the self.stim_data attribute.
+            """
+            warnings.warn(warn_text, stacklevel = 4)
 
     # Generates the .stim_data attribute.
     def _init_stim_data(self):
@@ -307,7 +355,40 @@ class load_experiment(ephys_toolkit):
         """
         A dictionary object with the spiking data.
         """
+        
+    def _get_conditions_from_log(self):
+        
+        with open(self.logfile, 'r') as f:
+            stimlog = f.readlines()
 
+        stimlog = stimlog[1:-2]
+        
+        # extract conditions for log
+        r0 = r'[Cc]ondition#: *(\d{1,})'
+        r1 = r'[Cc]onditions:(\d{1,} +...*)'
+        condition_ids = []
+        for line in stimlog:
+            if re.search(r0, line):
+                c_id = re.search(r0, line).group(1)
+                condition_ids.append(int(c_id))
+                
+## FIX: Something wrong with the stimulus condition count for natural image recordings
+#             elif re.search(r1, line):
+#                 c_list = re.search(r1, line).group(1)
+#                 line_list = c_list.split(" ")
+#                 for c_id in line_list:
+#                     print(c_id)
+#                     if not re.search(r" ?(\d{1,}) ?", c_id):
+#                         pass
+#                     else:
+#                         condition_ids.append(int(c_id))
+        try:  
+            # replace conditions in experiment with conditions from log
+            self.stim_data.stim_condition_ids = condition_ids
+            self.stim_conditions = self.stim_data.stim_condition_ids.unique()
+        except ValueError:
+            pass
+            
     def set_time_unit(self, bin_size=0.001):
         """
         Change the time unit of the relative spike times.
@@ -373,6 +454,7 @@ class load_experiment(ephys_toolkit):
         
         - params_file: Path to the stimulus parameters file.
         """
+        # 
 
         # regex to get the parameter names + values
         name_identifier = r'Var\d{1,}Val'
@@ -448,8 +530,13 @@ class load_experiment(ephys_toolkit):
         for condition in stim_condition:
             condition_start_times = self.condition_times(condition)['start']
 
-            for cluster_id in include_units:
-                unit_spike_times = self.spike_data[cluster_id]['rel_spike_time']
+            for i, cluster_id in enumerate(include_units):
+                if type(cluster_id) == np.ndarray:
+                    unit_spike_times = cluster_id
+                    cluster_id = f"n{i}"
+                    
+                else:
+                    unit_spike_times = self.spike_data[cluster_id]['rel_spike_time']
 
                 # Raster
                 x = self.raster(
@@ -686,121 +773,112 @@ class load_experiment(ephys_toolkit):
             norm=norm)
 
         return population
+    
+    def avg_across_param(
+            self,
+            pop_resp, # this df must have cluster ids as columns
+            col_param: str, # parameter whose values are to be shown in the columns
+            avg_param: list, # parameters to average across
+    ):
+
+        # groupby the parameter of interest
+        gb = pop_resp.groupby(col_param).agg(list)
+
+        # get an array of the column values and cluster ids
+        col_values = gb.index.values
+        units = [x for x in gb.columns.values if type(x) == int]
+
+        # initialize dictionary for cross parameter averaged data
+        data = {'cluster': np.array([])}
+        for col in col_values:
+            data[col] = np.array([])
+
+        # create the cluster id column
+        for unit_id in units:
+            unit_ids = np.array([unit_id]*500)
+            data['cluster'] = np.concatenate((data['cluster'], unit_ids), axis = 0)
+
+        # get the number of parameter combos and length of response
+        param_combos = 1
+        for param in avg_param:
+            param_combos*=len(pop_resp[param].unique())
+        resp_len = len(pop_resp.loc[pop_resp.stimulus_condition == 1])
+
+         # create the firing rate value columns
+        try:
+            for col in col_values:
+                for unit_id in units:
+                    cc_avg = np.array(gb[unit_id][col]).reshape(param_combos,resp_len).mean(0)
+                    data[col] = np.concatenate((data[col], cc_avg), axis = 0)
+            return pd.DataFrame(data)
+        except ValueError:
+                        err_msg = """
+                        Failed to reshape response array. 
+                        Make sure col_param is not repeated
+                        in avg_param.
+                        """
+                        print(err_msg)
+                    
+    def _stim_frame_map(self, dim, radius, edge):
+        frame_map = {}
+        for i in range(len(self.parameter_map)):
+            con = i+1
+            dx = self.parameter_map.iloc[i]
+
+            frame = self.static_grating(
+                sf = float(dx['Spatial Freq']),
+                ori = float(dx['Orientation']),
+                ph = float(dx['Phase'])*360,
+                dim = dim,
+                radius = radius,
+                edge = edge
+            )
+
+            frame_map[con] = frame
+
+        self.frame_map = frame_map
+
+    def _stim_frames(self):
+        cond = self.stim_data.stim_condition_ids.values
+        self.stim_frames = np.array([self.frame_map[i] for i in cond])
 
     def spike_triggered_rf(
-            self, cluster,
-            corr='reverse',
-            enlarge=1,
-            psize=30.0,
-            psf=0.02,
-            pph=0.0,
-            pori=0.0,
-
+            self, 
+            cluster, 
+            delay = 1,
+            dim = (50,50),
+            radius = None,
+            edge = 'discrete',
+            sub_ensemble_avg = True
     ):
-        """
-        Map receptive field using spike triggered averaging.
-        By default, paremeters in the .stim_data attribute will 
-        be used. If .stim_data is missing parameters, user declared 
-        parameters can be passed as float values (static parameter)
-        or 1d array-like structures (dynamic parameters). If parameters 
-        are not found in .stim_data or not passed by the user, 
-        default static values for the parameters will be used.
+
+        self._stim_frame_map(dim, radius, edge)
+        self._stim_frames()
+
+        cond = self.stim_data.stim_condition_ids.values
+
+        unit = self.spike_data[cluster]['spike_index']
+        i = np.where(
+            unit>self.stim_data.stim_start_indicies.values[0]
+        )
+        unit = unit[i]
+        unit = unit/20/16.666667
+        unit = unit.round() - delay
+
+        i = np.where(unit<len(cond))[0]
+        unit = unit[i].astype(int)
+        rf = self.stim_frames[unit].mean(0)
         
-        Args:
+        if sub_ensemble_avg is True:
+            ensemble_avg = self.stim_frames.mean(0)
+            rf = rf - ensemble_avg
+        else:
+            pass
         
-        - cluster: Cluster id.
-        - corr: Stimulus order correlation method - pass either 'reverse' or 'forward'.
-          Default argument is 'revers.
-        - enlarge: Scale by which to enlarge the stimulus for viewability purposes.
-          Default argument is 1.
-        - psize: Radius of the stimulus - pass as a degree value.
-          Default argument is 30.
-        - psf: Spatial frequency - pass as a floating point value.
-          Default argument is 0.02.
-        - pph: Phase - pass as a percentage value between 0 - 1.
-          Default argument is 0.
-        - pori: Orientation - pass as a degree value.
-          Default argument is 0.
-        """
+        del self.frame_map
+        del self.stim_frames
 
-        # Get the index range for stim appearnce
-        stim_df = self.stim_data
-        stim_app_range = list(zip(
-            stim_df['stim_start_indicies'].values[:-1],
-            stim_df['stim_start_indicies'].values[1:]))
-        stim_ranges = [
-            np.arange(r[0], r[1], 1) for r in stim_app_range
-        ]
-
-        spike_ind = self.spike_data[cluster]['spike_index']
-        final_start = stim_df['stim_start_indicies'].values[-1]
-        final_range = np.arange(final_start, spike_ind[-1], 1)
-        stim_ranges.append(final_range)
-
-        stim_df['index_range'] = stim_ranges
-        df = stim_df.explode('index_range')
-
-        # Find the stimulus parameters prior to each spike.
-        first_stim = int(df.iloc[0]['stim_start_indicies'])
-        t = []
-
-        for i0, i in enumerate(spike_ind):
-            if corr == 'reverse':
-                stim_i = i - 1
-            elif corr == 'forward':
-                stim_i = i + 1
-
-            if stim_i - first_stim < 0:
-                continue
-
-            s = df.iloc[stim_i - first_stim]
-
-            # Size ######################## 
-            if 'Size' in df.columns.values:
-                size = s['Size'] * enlarge
-            elif type(psize) == float:
-                size = psize * enlarge
-            else:
-                size = psize[i0] * enlarge
-
-            # Spatial frequency ############
-            if 'Spatial Freq' in df.columns.values:
-                sf = s['Spatial Freq']
-            elif type(psf) == float:
-                sf = psf
-            else:
-                sf = psf[i0]
-
-            # Phase ########################
-            if 'Phase' in df.columns.values:
-                ph = s['Phase'] * 360
-            elif type(pph) == float:
-                ph = pph * 360
-            else:
-                ph = pph[i0] * 360
-
-            # Orientation ##################
-            if 'Orientation' in df.columns.values:
-                ori = s['Orientation']
-            elif type(pori) == float:
-                ori = pori
-            else:
-                ori = pori[i0]
-
-            # Make the pixel intensity matrix
-            m = self.static_grating(
-                sf,
-                ori,
-                ph,
-                dim=(50, 50),
-                radius=size,
-                edge='discrete')
-
-            t.append(m)
-
-        sta = np.mean(np.array(t), axis=0)
-        return sta
-
+        return rf
 
 class load_project(ephys_toolkit):
     """
@@ -847,9 +925,18 @@ class load_project(ephys_toolkit):
         # find and sort stim files
         stim_files = explorer.findext(self.ppath, '.mat', r='stimulusData')
         stim_files.sort(key=lambda x: int(re.search(r'BLK(\d{1,})', x).group(1)))
+        
+        # find and sort log files
+        log_files = explorer.findext(self.ppath, '.log')
+        log_files.sort(key=lambda x: int(re.search(r'BLK(\d{1,})', x).group(1)))
+        
+        # count how many log files are in the data folder
+        log_diff = len(spike_files)-len(log_files)
+        for i in range(log_diff):
+            log_files.append(None)
 
-        # match spike and stim files
-        matched_spike_stim = zip(spike_files, stim_files)
+        # zip matching blocks
+        matched_block_files = zip(spike_files, stim_files, log_files)
 
         # find metrics files
         metrics_files = explorer.findext(self.ppath, '.json', r='metrics_isolation')
@@ -873,11 +960,11 @@ class load_project(ephys_toolkit):
             )
 
         # match experiment (block) objects to section
-        for spike_stim in matched_spike_stim:
-            section_child = int(re.search(r'Section_(\d{1,})', spike_stim[0]).group(1))
-            block = int(re.search(r'BLK(\d{1,})', spike_stim[0]).group(1))
+        for matched_files in list(matched_block_files):
+            section_child = int(re.search(r'Section_(\d{1,})', matched_files[0]).group(1))
+            block = int(re.search(r'BLK(\d{1,})', matched_files[0]).group(1))
 
-            experiment = load_experiment(*spike_stim)
+            experiment = load_experiment(*matched_files)
             self.workbook[section_child - 1]['blocks'].append({
                 'block_id': block,
                 'experiment': experiment
