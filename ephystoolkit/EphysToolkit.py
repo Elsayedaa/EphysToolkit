@@ -367,27 +367,78 @@ class load_experiment(ephys_toolkit):
         r0 = r'[Cc]ondition#: *(\d{1,})'
         r1 = r'[Cc]onditions:(\d{1,} +...*)'
         condition_ids = []
-        for line in stimlog:
-            if re.search(r0, line):
+        
+        if re.search(r0, stimlog[1]): # if the experiment is gratings or checkerboard
+            for line in stimlog:
                 c_id = re.search(r0, line).group(1)
                 condition_ids.append(int(c_id))
                 
-## FIX: Something wrong with the stimulus condition count for natural image recordings
-#             elif re.search(r1, line):
-#                 c_list = re.search(r1, line).group(1)
-#                 line_list = c_list.split(" ")
-#                 for c_id in line_list:
-#                     print(c_id)
-#                     if not re.search(r" ?(\d{1,}) ?", c_id):
-#                         pass
-#                     else:
-#                         condition_ids.append(int(c_id))
-        try:  
-            # replace conditions in experiment with conditions from log
-            self.stim_data.stim_condition_ids = condition_ids
+            try:  
+                # replace conditions in experiment with conditions from log
+                self.stim_data.stim_condition_ids = condition_ids
+                self.stim_conditions = self.stim_data.stim_condition_ids.unique()
+            except ValueError:
+                pass
+            
+        elif re.search(r1, stimlog[1]): # if the experiment is natural images
+            condition_ids = []
+            for x in stimlog:
+                cindex = x.index(':')+1 # index where condition numbers begin
+                numbers = x[cindex:].strip() # remove whitespace at the end
+                numbers = numbers.replace('  ', ' ') # remove double spaces
+                numbers = numbers.split(' ') # split into a list of conditon numbers
+                numbers = [int(x) for x in numbers] # format str into int
+                condition_ids += numbers #collect condition ids
+
+            ## This horrible block of code is here because the stimData matlab
+            ## file is missing the data the last two stimulus repeats
+            ## so it is added manually until the stimData file generation is fixed
+
+            # difference between consecutive start indicies
+            startindex_diff = (self.stim_data['stim_start_indicies'].values[-1] 
+                             - self.stim_data['stim_start_indicies'].values[-2])
+
+            # difference between consecutive stop indicies
+            stopindex_diff = (self.stim_data['stim_stop_indicies'].values[-1] 
+                             - self.stim_data['stim_stop_indicies'].values[-2])
+
+            # difference between consecutive start times
+            starttime_diff = (self.stim_data['stim_start_times'].values[-1] 
+                             - self.stim_data['stim_start_times'].values[-2])
+
+            # difference between consecutive stop times
+            stoptime_diff = (self.stim_data['stim_stop_times'].values[-1] 
+                             - self.stim_data['stim_stop_times'].values[-2])
+
+            # adding two additional start indicies 
+            start_ind_fixed = list(self.stim_data['stim_start_indicies'].values)
+            start_ind_fixed = start_ind_fixed + [start_ind_fixed[-1]-+startindex_diff, 
+                                                 start_ind_fixed[-1]+2*startindex_diff]
+            # adding two additional stop indicies 
+            stop_ind_fixed = list(self.stim_data['stim_stop_indicies'].values)
+            stop_ind_fixed = stop_ind_fixed + [stop_ind_fixed[-1]+stopindex_diff, 
+                                                 stop_ind_fixed[-1]+2*stopindex_diff]
+
+            # adding two additional start times 
+            start_time_fixed = list(self.stim_data['stim_start_times'].values)
+            start_time_fixed = start_time_fixed + [start_time_fixed[-1]+starttime_diff, 
+                                                 start_time_fixed[-1]+2*starttime_diff]
+            # adding two additional stop times 
+            stop_time_fixed = list(self.stim_data['stim_stop_times'].values)
+            stop_time_fixed = stop_time_fixed + [stop_time_fixed[-1]+stoptime_diff, 
+                                                 stop_time_fixed[-1]+2*stoptime_diff]
+
+            # fixed stim data dictionary
+            stim_data_fixed = {
+                'stim_condition_ids': condition_ids,
+                'stim_start_indicies': start_ind_fixed,
+                'stim_stop_indicies': stop_ind_fixed,
+                'stim_start_times': start_time_fixed,
+                'stim_stop_times': stop_time_fixed
+            }
+            
+            self.stim_data = pd.DataFrame(stim_data_fixed)
             self.stim_conditions = self.stim_data.stim_condition_ids.unique()
-        except ValueError:
-            pass
             
     def set_time_unit(self, bin_size=0.001):
         """
@@ -463,45 +514,114 @@ class load_experiment(ephys_toolkit):
         # load the parameter file and extract the keys
         params = scipy.io.loadmat(params_file)
         param_keys = list(params.keys())
-
-        # use regex to get the param names and values
-        name_keys = [key for key in param_keys if re.search(name_identifier, key)]
-        val_keys = [key for key in param_keys if re.search(val_identifier, key)]
-
-        # get the condition numbers
-        condition_range = len(params[val_keys[0]][0])
-        condition_ids = [i + 1 for i in range(condition_range)]
-
-        # map conditions to parameter values
-        parameter_map = {'condition': condition_ids}
-        for i in range(len(name_keys)):
-            parameter_name = str(params[name_keys[i]][0])
-            parameter_values = np.array(params[val_keys[i]][0])
-
-            parameter_map[parameter_name] = parameter_values
-
-            # parameter dataframe + the original stim_data dataframe
-        self.parameter_map = pd.DataFrame(parameter_map)
-        df = self.stim_data
-
-        # get the parameters to insert into the original dataframe
-        insert = []
-        for cond in df.stim_condition_ids.values:
-            arr = self.parameter_map.loc[self.parameter_map.condition == cond].values[0]
-            insert.append(arr)
-        insert = pd.DataFrame(insert, columns=self.parameter_map.columns.values)
-
-        # insert the parameter values into the original dataframe
-        df1 = df.join(insert)
-
-        # reset the stim_data attribute
-        self.stim_data = df1[
-            list([df.columns.values[0]])
-            + list(self.parameter_map.columns.values[1:])
-            + list(
-                df.columns.values[1:]
-            )
+        
+        if 'fnames' in param_keys: # if experiment is natural images
+            
+            # get the stim file names
+            stim_file_names = [
+                name[0][0] for 
+                name in scipy.io.loadmat(params_file)['fnames']
             ]
+            
+            # make a dictionary for the parameter mapping
+            ni_filemap = {
+                'condition': [],
+                'size': [],
+                'filter': [],
+                'file': []
+            }
+            
+            # match condition to parameters
+            freg = r'^[A-Z]{2,3}'
+            for i in self.stim_conditions:
+                if i%2 == 0: # if condition is even
+                    
+                    #append condition & size
+                    ni_filemap['condition'].append(i)
+                    ni_filemap['size'].append(60)
+                    
+                    #append filename
+                    filename = stim_file_names[int(i/2)-1]
+                    ni_filemap['file'].append(filename) 
+                    
+                    #append filtering condition
+                    filt = re.search(freg, filename).group(0)
+                    ni_filemap['filter'].append(filt)
+            
+                else: # if condition is odd
+                    #append condition & size
+                    ni_filemap['condition'].append(i)
+                    ni_filemap['size'].append(30)
+                    
+                    #append filename
+                    filename = stim_file_names[int((i+1)/2)-1]
+                    ni_filemap['file'].append(filename)
+                    
+                    #append filtering condition
+                    filt = re.search(freg, filename).group(0)
+                    ni_filemap['filter'].append(filt)
+                    
+            self.parameter_map = pd.DataFrame(ni_filemap) 
+            df = self.stim_data
+            
+            # get the parameters to insert into the original dataframe
+            insert = []
+            for cond in df.stim_condition_ids.values:
+                arr = self.parameter_map.loc[self.parameter_map.condition == cond].values[0]
+                insert.append(arr)
+            insert = pd.DataFrame(insert, columns=self.parameter_map.columns.values)
+
+            # insert the parameter values into the original dataframe
+            df1 = df.join(insert)
+
+            # reset the stim_data attribute
+            self.stim_data = df1[
+                list([df.columns.values[0]])
+                + list(self.parameter_map.columns.values[1:])
+                + list(
+                    df.columns.values[1:]
+                )
+                ]
+        
+        else: # if experiment is gratings or checkerboard
+            # use regex to get the param names and values
+            name_keys = [key for key in param_keys if re.search(name_identifier, key)]
+            val_keys = [key for key in param_keys if re.search(val_identifier, key)]
+
+            # get the condition numbers
+            condition_range = len(params[val_keys[0]][0])
+            condition_ids = [i + 1 for i in range(condition_range)]
+
+            # map conditions to parameter values
+            parameter_map = {'condition': condition_ids}
+            for i in range(len(name_keys)):
+                parameter_name = str(params[name_keys[i]][0])
+                parameter_values = np.array(params[val_keys[i]][0])
+
+                parameter_map[parameter_name] = parameter_values
+
+                # parameter dataframe + the original stim_data dataframe
+            self.parameter_map = pd.DataFrame(parameter_map)
+            df = self.stim_data
+
+            # get the parameters to insert into the original dataframe
+            insert = []
+            for cond in df.stim_condition_ids.values:
+                arr = self.parameter_map.loc[self.parameter_map.condition == cond].values[0]
+                insert.append(arr)
+            insert = pd.DataFrame(insert, columns=self.parameter_map.columns.values)
+
+            # insert the parameter values into the original dataframe
+            df1 = df.join(insert)
+
+            # reset the stim_data attribute
+            self.stim_data = df1[
+                list([df.columns.values[0]])
+                + list(self.parameter_map.columns.values[1:])
+                + list(
+                    df.columns.values[1:]
+                )
+                ]
 
         self.parameters_matched = True
 
@@ -961,6 +1081,10 @@ class load_project(ephys_toolkit):
 
         # match experiment (block) objects to section
         for matched_files in list(matched_block_files):
+            # a regex to get the experiment identity
+            ex_r = r'[A-Z]{2}_M\d+_Section_\d+_BLK\d+' 
+            experiment_id = re.search(ex_r, matched_files[0]).group(0)
+            
             section_child = int(re.search(r'Section_(\d{1,})', matched_files[0]).group(1))
             block = int(re.search(r'BLK(\d{1,})', matched_files[0]).group(1))
 
@@ -969,6 +1093,7 @@ class load_project(ephys_toolkit):
                 'block_id': block,
                 'experiment': experiment
             })
+            print(f"Sucessfully loaded {experiment_id}.")
 
 
 # Class Errors
