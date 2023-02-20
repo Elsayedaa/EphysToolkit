@@ -962,43 +962,6 @@ class load_experiment(ephys_toolkit):
         cond = self.stim_data.stim_condition_ids.values
         self.stim_frames = np.array([self.frame_map[i] for i in cond])
 
-    def spike_triggered_rf(
-            self, 
-            cluster, 
-            delay = 1,
-            dim = (50,50),
-            radius = None,
-            edge = 'discrete',
-            sub_ensemble_avg = True
-    ):
-
-        self._stim_frame_map(dim, radius, edge)
-        self._stim_frames()
-
-        cond = self.stim_data.stim_condition_ids.values
-
-        unit = self.spike_data[cluster]['spike_index']
-        i = np.where(
-            unit>self.stim_data.stim_start_indicies.values[0]
-        )
-        unit = unit[i]
-        unit = unit/20/16.666667
-        unit = unit.round() - delay
-
-        i = np.where(unit<len(cond))[0]
-        unit = unit[i].astype(int)
-        rf = self.stim_frames[unit].mean(0)
-        
-        if sub_ensemble_avg is True:
-            ensemble_avg = self.stim_frames.mean(0)
-            rf = rf - ensemble_avg
-        else:
-            pass
-        
-        del self.frame_map
-        del self.stim_frames
-
-        return rf
 
 class load_project(ephys_toolkit):
     """
