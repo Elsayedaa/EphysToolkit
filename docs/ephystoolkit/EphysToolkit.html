@@ -41,6 +41,9 @@
                         <li>
                                 <a class="function" href="#ephys_toolkit.raster">raster</a>
                         </li>
+                        <li>
+                                <a class="function" href="#ephys_toolkit.avg_across_param">avg_across_param</a>
+                        </li>
                 </ul>
 
             </li>
@@ -61,9 +64,6 @@
                         </li>
                         <li>
                                 <a class="function" href="#load_experiment.population_response">population_response</a>
-                        </li>
-                        <li>
-                                <a class="function" href="#load_experiment.avg_across_param">avg_across_param</a>
                         </li>
                 </ul>
 
@@ -369,6 +369,59 @@ ephystoolkit<wbr>.EphysToolkit    </h1>
         <span class="k">else</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unconcatenated_raster</span><span class="p">(</span><span class="n">stims</span><span class="p">,</span> <span class="n">spikes</span><span class="p">,</span> <span class="n">thresh</span><span class="p">)</span>
 
+    <span class="k">def</span> <span class="nf">avg_across_param</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">pop_resp</span><span class="p">,</span> <span class="c1"># this df must have cluster ids as columns</span>
+            <span class="n">col_param</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="c1"># parameter whose values are to be shown in the columns</span>
+            <span class="n">avg_param</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="c1"># parameters to average across</span>
+    <span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns a dataframe showing responses as a function one parameter while averaging</span>
+<span class="sd">        over the other parameters.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">        - pop_resp: A dataframe of the population response in which the columns are units.</span>
+<span class="sd">        - col_param: The parameter to show in the columns.</span>
+<span class="sd">        - avg_param: The parameter(s) to average across.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># groupby the parameter of interest</span>
+        <span class="n">gb</span> <span class="o">=</span> <span class="n">pop_resp</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">col_param</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+
+        <span class="c1"># get an array of the column values and cluster ids</span>
+        <span class="n">col_values</span> <span class="o">=</span> <span class="n">gb</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">values</span>
+        <span class="n">units</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">gb</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">values</span> <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\d&#39;</span><span class="p">,</span> <span class="n">x</span><span class="p">)]</span>
+
+        <span class="c1"># initialize dictionary for cross parameter averaged data</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;cluster&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])}</span>
+        <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">col_values</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])</span>
+
+        <span class="c1"># create the cluster id column</span>
+        <span class="k">for</span> <span class="n">unit_id</span> <span class="ow">in</span> <span class="n">units</span><span class="p">:</span>
+            <span class="n">unit_ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">unit_id</span><span class="p">]</span><span class="o">*</span><span class="mi">500</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s1">&#39;cluster&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;cluster&#39;</span><span class="p">],</span> <span class="n">unit_ids</span><span class="p">),</span> <span class="n">axis</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
+
+        <span class="c1"># get the number of parameter combos and length of response</span>
+        <span class="n">param_combos</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">for</span> <span class="n">param</span> <span class="ow">in</span> <span class="n">avg_param</span><span class="p">:</span>
+            <span class="n">param_combos</span><span class="o">*=</span><span class="nb">len</span><span class="p">(</span><span class="n">pop_resp</span><span class="p">[</span><span class="n">param</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">())</span>
+        <span class="n">resp_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pop_resp</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">pop_resp</span><span class="o">.</span><span class="n">stimulus_condition</span> <span class="o">==</span> <span class="mi">1</span><span class="p">])</span>
+
+         <span class="c1"># create the firing rate value columns</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">col_values</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">unit_id</span> <span class="ow">in</span> <span class="n">units</span><span class="p">:</span>
+                    <span class="n">cc_avg</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">gb</span><span class="p">[</span><span class="n">unit_id</span><span class="p">][</span><span class="n">col</span><span class="p">])</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">param_combos</span><span class="p">,</span><span class="n">resp_len</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                    <span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">],</span> <span class="n">cc_avg</span><span class="p">),</span> <span class="n">axis</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                        <span class="n">err_msg</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                        Failed to reshape response array. </span>
+<span class="s2">                        Make sure col_param is not repeated</span>
+<span class="s2">                        in avg_param.</span>
+<span class="s2">                        &quot;&quot;&quot;</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="n">err_msg</span><span class="p">)</span>
 
 <span class="k">class</span> <span class="nc">load_experiment</span><span class="p">(</span><span class="n">ephys_toolkit</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
@@ -991,51 +1044,6 @@ ephystoolkit<wbr>.EphysToolkit    </h1>
             <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="n">population</span>
-    
-    <span class="k">def</span> <span class="nf">avg_across_param</span><span class="p">(</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="n">pop_resp</span><span class="p">,</span> <span class="c1"># this df must have cluster ids as columns</span>
-            <span class="n">col_param</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="c1"># parameter whose values are to be shown in the columns</span>
-            <span class="n">avg_param</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="c1"># parameters to average across</span>
-    <span class="p">):</span>
-
-        <span class="c1"># groupby the parameter of interest</span>
-        <span class="n">gb</span> <span class="o">=</span> <span class="n">pop_resp</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">col_param</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
-
-        <span class="c1"># get an array of the column values and cluster ids</span>
-        <span class="n">col_values</span> <span class="o">=</span> <span class="n">gb</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">values</span>
-        <span class="n">units</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">gb</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">values</span> <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">==</span> <span class="nb">int</span><span class="p">]</span>
-
-        <span class="c1"># initialize dictionary for cross parameter averaged data</span>
-        <span class="n">data</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;cluster&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])}</span>
-        <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">col_values</span><span class="p">:</span>
-            <span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])</span>
-
-        <span class="c1"># create the cluster id column</span>
-        <span class="k">for</span> <span class="n">unit_id</span> <span class="ow">in</span> <span class="n">units</span><span class="p">:</span>
-            <span class="n">unit_ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">unit_id</span><span class="p">]</span><span class="o">*</span><span class="mi">500</span><span class="p">)</span>
-            <span class="n">data</span><span class="p">[</span><span class="s1">&#39;cluster&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;cluster&#39;</span><span class="p">],</span> <span class="n">unit_ids</span><span class="p">),</span> <span class="n">axis</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
-
-        <span class="c1"># get the number of parameter combos and length of response</span>
-        <span class="n">param_combos</span> <span class="o">=</span> <span class="mi">1</span>
-        <span class="k">for</span> <span class="n">param</span> <span class="ow">in</span> <span class="n">avg_param</span><span class="p">:</span>
-            <span class="n">param_combos</span><span class="o">*=</span><span class="nb">len</span><span class="p">(</span><span class="n">pop_resp</span><span class="p">[</span><span class="n">param</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">())</span>
-        <span class="n">resp_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pop_resp</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">pop_resp</span><span class="o">.</span><span class="n">stimulus_condition</span> <span class="o">==</span> <span class="mi">1</span><span class="p">])</span>
-
-         <span class="c1"># create the firing rate value columns</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">col_values</span><span class="p">:</span>
-                <span class="k">for</span> <span class="n">unit_id</span> <span class="ow">in</span> <span class="n">units</span><span class="p">:</span>
-                    <span class="n">cc_avg</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">gb</span><span class="p">[</span><span class="n">unit_id</span><span class="p">][</span><span class="n">col</span><span class="p">])</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">param_combos</span><span class="p">,</span><span class="n">resp_len</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-                    <span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">],</span> <span class="n">cc_avg</span><span class="p">),</span> <span class="n">axis</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
-                        <span class="n">err_msg</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
-<span class="s2">                        Failed to reshape response array. </span>
-<span class="s2">                        Make sure col_param is not repeated</span>
-<span class="s2">                        in avg_param.</span>
-<span class="s2">                        &quot;&quot;&quot;</span>
-                        <span class="nb">print</span><span class="p">(</span><span class="n">err_msg</span><span class="p">)</span>
                     
     <span class="k">def</span> <span class="nf">_stim_frame_map</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">radius</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
         <span class="n">frame_map</span> <span class="o">=</span> <span class="p">{}</span>
@@ -1485,6 +1493,60 @@ ephystoolkit<wbr>.EphysToolkit    </h1>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_concatenated_raster</span><span class="p">(</span><span class="n">stims</span><span class="p">,</span> <span class="n">spikes</span><span class="p">,</span> <span class="n">thresh</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unconcatenated_raster</span><span class="p">(</span><span class="n">stims</span><span class="p">,</span> <span class="n">spikes</span><span class="p">,</span> <span class="n">thresh</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">avg_across_param</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">pop_resp</span><span class="p">,</span> <span class="c1"># this df must have cluster ids as columns</span>
+            <span class="n">col_param</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="c1"># parameter whose values are to be shown in the columns</span>
+            <span class="n">avg_param</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="c1"># parameters to average across</span>
+    <span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns a dataframe showing responses as a function one parameter while averaging</span>
+<span class="sd">        over the other parameters.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">        - pop_resp: A dataframe of the population response in which the columns are units.</span>
+<span class="sd">        - col_param: The parameter to show in the columns.</span>
+<span class="sd">        - avg_param: The parameter(s) to average across.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># groupby the parameter of interest</span>
+        <span class="n">gb</span> <span class="o">=</span> <span class="n">pop_resp</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">col_param</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+
+        <span class="c1"># get an array of the column values and cluster ids</span>
+        <span class="n">col_values</span> <span class="o">=</span> <span class="n">gb</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">values</span>
+        <span class="n">units</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">gb</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">values</span> <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\d&#39;</span><span class="p">,</span> <span class="n">x</span><span class="p">)]</span>
+
+        <span class="c1"># initialize dictionary for cross parameter averaged data</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;cluster&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])}</span>
+        <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">col_values</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])</span>
+
+        <span class="c1"># create the cluster id column</span>
+        <span class="k">for</span> <span class="n">unit_id</span> <span class="ow">in</span> <span class="n">units</span><span class="p">:</span>
+            <span class="n">unit_ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">unit_id</span><span class="p">]</span><span class="o">*</span><span class="mi">500</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s1">&#39;cluster&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;cluster&#39;</span><span class="p">],</span> <span class="n">unit_ids</span><span class="p">),</span> <span class="n">axis</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
+
+        <span class="c1"># get the number of parameter combos and length of response</span>
+        <span class="n">param_combos</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">for</span> <span class="n">param</span> <span class="ow">in</span> <span class="n">avg_param</span><span class="p">:</span>
+            <span class="n">param_combos</span><span class="o">*=</span><span class="nb">len</span><span class="p">(</span><span class="n">pop_resp</span><span class="p">[</span><span class="n">param</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">())</span>
+        <span class="n">resp_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pop_resp</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">pop_resp</span><span class="o">.</span><span class="n">stimulus_condition</span> <span class="o">==</span> <span class="mi">1</span><span class="p">])</span>
+
+         <span class="c1"># create the firing rate value columns</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">col_values</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">unit_id</span> <span class="ow">in</span> <span class="n">units</span><span class="p">:</span>
+                    <span class="n">cc_avg</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">gb</span><span class="p">[</span><span class="n">unit_id</span><span class="p">][</span><span class="n">col</span><span class="p">])</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">param_combos</span><span class="p">,</span><span class="n">resp_len</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                    <span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">],</span> <span class="n">cc_avg</span><span class="p">),</span> <span class="n">axis</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                        <span class="n">err_msg</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                        Failed to reshape response array. </span>
+<span class="s2">                        Make sure col_param is not repeated</span>
+<span class="s2">                        in avg_param.</span>
+<span class="s2">                        &quot;&quot;&quot;</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="n">err_msg</span><span class="p">)</span>
 </pre></div>
 
         </details>
@@ -1824,6 +1886,87 @@ around the onset times of a given stimulus.</p>
 <li>spikes: Array of spike onset times.</li>
 <li>thresh: Bounding threshold around the stimulus onset at t = 0 - pass as a tuple.</li>
 <li>concatenate: Concatenate rasters across trials; pass False to return unconcatenated rasters.</li>
+</ul>
+</div>
+
+
+                            </div>
+                            <div id="ephys_toolkit.avg_across_param" class="classattr">
+                                        <div class="attr function"><a class="headerlink" href="#ephys_toolkit.avg_across_param">#&nbsp;&nbsp</a>
+
+        
+            <span class="def">def</span>
+            <span class="name">avg_across_param</span><span class="signature">(self, pop_resp, col_param: str, avg_param: list)</span>:
+    </div>
+
+            <details>
+            <summary>View Source</summary>
+            <div class="pdoc-code codehilite"><pre><span></span>    <span class="k">def</span> <span class="nf">avg_across_param</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">pop_resp</span><span class="p">,</span> <span class="c1"># this df must have cluster ids as columns</span>
+            <span class="n">col_param</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="c1"># parameter whose values are to be shown in the columns</span>
+            <span class="n">avg_param</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="c1"># parameters to average across</span>
+    <span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns a dataframe showing responses as a function one parameter while averaging</span>
+<span class="sd">        over the other parameters.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">        - pop_resp: A dataframe of the population response in which the columns are units.</span>
+<span class="sd">        - col_param: The parameter to show in the columns.</span>
+<span class="sd">        - avg_param: The parameter(s) to average across.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># groupby the parameter of interest</span>
+        <span class="n">gb</span> <span class="o">=</span> <span class="n">pop_resp</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">col_param</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+
+        <span class="c1"># get an array of the column values and cluster ids</span>
+        <span class="n">col_values</span> <span class="o">=</span> <span class="n">gb</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">values</span>
+        <span class="n">units</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">gb</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">values</span> <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\d&#39;</span><span class="p">,</span> <span class="n">x</span><span class="p">)]</span>
+
+        <span class="c1"># initialize dictionary for cross parameter averaged data</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;cluster&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])}</span>
+        <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">col_values</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])</span>
+
+        <span class="c1"># create the cluster id column</span>
+        <span class="k">for</span> <span class="n">unit_id</span> <span class="ow">in</span> <span class="n">units</span><span class="p">:</span>
+            <span class="n">unit_ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">unit_id</span><span class="p">]</span><span class="o">*</span><span class="mi">500</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[</span><span class="s1">&#39;cluster&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;cluster&#39;</span><span class="p">],</span> <span class="n">unit_ids</span><span class="p">),</span> <span class="n">axis</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
+
+        <span class="c1"># get the number of parameter combos and length of response</span>
+        <span class="n">param_combos</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">for</span> <span class="n">param</span> <span class="ow">in</span> <span class="n">avg_param</span><span class="p">:</span>
+            <span class="n">param_combos</span><span class="o">*=</span><span class="nb">len</span><span class="p">(</span><span class="n">pop_resp</span><span class="p">[</span><span class="n">param</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">())</span>
+        <span class="n">resp_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pop_resp</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">pop_resp</span><span class="o">.</span><span class="n">stimulus_condition</span> <span class="o">==</span> <span class="mi">1</span><span class="p">])</span>
+
+         <span class="c1"># create the firing rate value columns</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">col_values</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">unit_id</span> <span class="ow">in</span> <span class="n">units</span><span class="p">:</span>
+                    <span class="n">cc_avg</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">gb</span><span class="p">[</span><span class="n">unit_id</span><span class="p">][</span><span class="n">col</span><span class="p">])</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">param_combos</span><span class="p">,</span><span class="n">resp_len</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                    <span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">],</span> <span class="n">cc_avg</span><span class="p">),</span> <span class="n">axis</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                        <span class="n">err_msg</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                        Failed to reshape response array. </span>
+<span class="s2">                        Make sure col_param is not repeated</span>
+<span class="s2">                        in avg_param.</span>
+<span class="s2">                        &quot;&quot;&quot;</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="n">err_msg</span><span class="p">)</span>
+</pre></div>
+
+        </details>
+
+            <div class="docstring"><p>Returns a dataframe showing responses as a function one parameter while averaging
+over the other parameters.</p>
+
+<p>Args:</p>
+
+<ul>
+<li>pop_resp: A dataframe of the population response in which the columns are units.</li>
+<li>col_param: The parameter to show in the columns.</li>
+<li>avg_param: The parameter(s) to average across.</li>
 </ul>
 </div>
 
@@ -2462,51 +2605,6 @@ around the onset times of a given stimulus.</p>
             <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="n">population</span>
-    
-    <span class="k">def</span> <span class="nf">avg_across_param</span><span class="p">(</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="n">pop_resp</span><span class="p">,</span> <span class="c1"># this df must have cluster ids as columns</span>
-            <span class="n">col_param</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="c1"># parameter whose values are to be shown in the columns</span>
-            <span class="n">avg_param</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="c1"># parameters to average across</span>
-    <span class="p">):</span>
-
-        <span class="c1"># groupby the parameter of interest</span>
-        <span class="n">gb</span> <span class="o">=</span> <span class="n">pop_resp</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">col_param</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
-
-        <span class="c1"># get an array of the column values and cluster ids</span>
-        <span class="n">col_values</span> <span class="o">=</span> <span class="n">gb</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">values</span>
-        <span class="n">units</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">gb</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">values</span> <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">==</span> <span class="nb">int</span><span class="p">]</span>
-
-        <span class="c1"># initialize dictionary for cross parameter averaged data</span>
-        <span class="n">data</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;cluster&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])}</span>
-        <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">col_values</span><span class="p">:</span>
-            <span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])</span>
-
-        <span class="c1"># create the cluster id column</span>
-        <span class="k">for</span> <span class="n">unit_id</span> <span class="ow">in</span> <span class="n">units</span><span class="p">:</span>
-            <span class="n">unit_ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">unit_id</span><span class="p">]</span><span class="o">*</span><span class="mi">500</span><span class="p">)</span>
-            <span class="n">data</span><span class="p">[</span><span class="s1">&#39;cluster&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;cluster&#39;</span><span class="p">],</span> <span class="n">unit_ids</span><span class="p">),</span> <span class="n">axis</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
-
-        <span class="c1"># get the number of parameter combos and length of response</span>
-        <span class="n">param_combos</span> <span class="o">=</span> <span class="mi">1</span>
-        <span class="k">for</span> <span class="n">param</span> <span class="ow">in</span> <span class="n">avg_param</span><span class="p">:</span>
-            <span class="n">param_combos</span><span class="o">*=</span><span class="nb">len</span><span class="p">(</span><span class="n">pop_resp</span><span class="p">[</span><span class="n">param</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">())</span>
-        <span class="n">resp_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pop_resp</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">pop_resp</span><span class="o">.</span><span class="n">stimulus_condition</span> <span class="o">==</span> <span class="mi">1</span><span class="p">])</span>
-
-         <span class="c1"># create the firing rate value columns</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">col_values</span><span class="p">:</span>
-                <span class="k">for</span> <span class="n">unit_id</span> <span class="ow">in</span> <span class="n">units</span><span class="p">:</span>
-                    <span class="n">cc_avg</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">gb</span><span class="p">[</span><span class="n">unit_id</span><span class="p">][</span><span class="n">col</span><span class="p">])</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">param_combos</span><span class="p">,</span><span class="n">resp_len</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-                    <span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">],</span> <span class="n">cc_avg</span><span class="p">),</span> <span class="n">axis</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
-                        <span class="n">err_msg</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
-<span class="s2">                        Failed to reshape response array. </span>
-<span class="s2">                        Make sure col_param is not repeated</span>
-<span class="s2">                        in avg_param.</span>
-<span class="s2">                        &quot;&quot;&quot;</span>
-                        <span class="nb">print</span><span class="p">(</span><span class="n">err_msg</span><span class="p">)</span>
                     
     <span class="k">def</span> <span class="nf">_stim_frame_map</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">radius</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
         <span class="n">frame_map</span> <span class="o">=</span> <span class="p">{}</span>
@@ -2969,67 +3067,6 @@ Default argument is 'stimulus_condition'.</li>
 
 
                             </div>
-                            <div id="load_experiment.avg_across_param" class="classattr">
-                                        <div class="attr function"><a class="headerlink" href="#load_experiment.avg_across_param">#&nbsp;&nbsp</a>
-
-        
-            <span class="def">def</span>
-            <span class="name">avg_across_param</span><span class="signature">(self, pop_resp, col_param: str, avg_param: list)</span>:
-    </div>
-
-            <details>
-            <summary>View Source</summary>
-            <div class="pdoc-code codehilite"><pre><span></span>    <span class="k">def</span> <span class="nf">avg_across_param</span><span class="p">(</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="n">pop_resp</span><span class="p">,</span> <span class="c1"># this df must have cluster ids as columns</span>
-            <span class="n">col_param</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="c1"># parameter whose values are to be shown in the columns</span>
-            <span class="n">avg_param</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="c1"># parameters to average across</span>
-    <span class="p">):</span>
-
-        <span class="c1"># groupby the parameter of interest</span>
-        <span class="n">gb</span> <span class="o">=</span> <span class="n">pop_resp</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">col_param</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
-
-        <span class="c1"># get an array of the column values and cluster ids</span>
-        <span class="n">col_values</span> <span class="o">=</span> <span class="n">gb</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">values</span>
-        <span class="n">units</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">gb</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">values</span> <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">==</span> <span class="nb">int</span><span class="p">]</span>
-
-        <span class="c1"># initialize dictionary for cross parameter averaged data</span>
-        <span class="n">data</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;cluster&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])}</span>
-        <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">col_values</span><span class="p">:</span>
-            <span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])</span>
-
-        <span class="c1"># create the cluster id column</span>
-        <span class="k">for</span> <span class="n">unit_id</span> <span class="ow">in</span> <span class="n">units</span><span class="p">:</span>
-            <span class="n">unit_ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">unit_id</span><span class="p">]</span><span class="o">*</span><span class="mi">500</span><span class="p">)</span>
-            <span class="n">data</span><span class="p">[</span><span class="s1">&#39;cluster&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;cluster&#39;</span><span class="p">],</span> <span class="n">unit_ids</span><span class="p">),</span> <span class="n">axis</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
-
-        <span class="c1"># get the number of parameter combos and length of response</span>
-        <span class="n">param_combos</span> <span class="o">=</span> <span class="mi">1</span>
-        <span class="k">for</span> <span class="n">param</span> <span class="ow">in</span> <span class="n">avg_param</span><span class="p">:</span>
-            <span class="n">param_combos</span><span class="o">*=</span><span class="nb">len</span><span class="p">(</span><span class="n">pop_resp</span><span class="p">[</span><span class="n">param</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">())</span>
-        <span class="n">resp_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pop_resp</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">pop_resp</span><span class="o">.</span><span class="n">stimulus_condition</span> <span class="o">==</span> <span class="mi">1</span><span class="p">])</span>
-
-         <span class="c1"># create the firing rate value columns</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">col_values</span><span class="p">:</span>
-                <span class="k">for</span> <span class="n">unit_id</span> <span class="ow">in</span> <span class="n">units</span><span class="p">:</span>
-                    <span class="n">cc_avg</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">gb</span><span class="p">[</span><span class="n">unit_id</span><span class="p">][</span><span class="n">col</span><span class="p">])</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">param_combos</span><span class="p">,</span><span class="n">resp_len</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-                    <span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">],</span> <span class="n">cc_avg</span><span class="p">),</span> <span class="n">axis</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
-                        <span class="n">err_msg</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
-<span class="s2">                        Failed to reshape response array. </span>
-<span class="s2">                        Make sure col_param is not repeated</span>
-<span class="s2">                        in avg_param.</span>
-<span class="s2">                        &quot;&quot;&quot;</span>
-                        <span class="nb">print</span><span class="p">(</span><span class="n">err_msg</span><span class="p">)</span>
-</pre></div>
-
-        </details>
-
-    
-
-                            </div>
                             <div class="inherited">
                                 <h5>Inherited Members</h5>
                                 <dl>
@@ -3038,6 +3075,7 @@ Default argument is 'stimulus_condition'.</li>
                 <dd id="load_experiment.drifting_grating" class="function"><a href="#ephys_toolkit.drifting_grating">drifting_grating</a></dd>
                 <dd id="load_experiment.spike_sorting_metrics" class="function"><a href="#ephys_toolkit.spike_sorting_metrics">spike_sorting_metrics</a></dd>
                 <dd id="load_experiment.raster" class="function"><a href="#ephys_toolkit.raster">raster</a></dd>
+                <dd id="load_experiment.avg_across_param" class="function"><a href="#ephys_toolkit.avg_across_param">avg_across_param</a></dd>
 
             </div>
                                 </dl>
@@ -3209,6 +3247,7 @@ with the following structure:</p>
                 <dd id="load_project.drifting_grating" class="function"><a href="#ephys_toolkit.drifting_grating">drifting_grating</a></dd>
                 <dd id="load_project.spike_sorting_metrics" class="function"><a href="#ephys_toolkit.spike_sorting_metrics">spike_sorting_metrics</a></dd>
                 <dd id="load_project.raster" class="function"><a href="#ephys_toolkit.raster">raster</a></dd>
+                <dd id="load_project.avg_across_param" class="function"><a href="#ephys_toolkit.avg_across_param">avg_across_param</a></dd>
 
             </div>
                                 </dl>

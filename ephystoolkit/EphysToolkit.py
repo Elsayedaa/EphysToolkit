@@ -271,6 +271,59 @@ class ephys_toolkit:
         else:
             return self._unconcatenated_raster(stims, spikes, thresh)
 
+    def avg_across_param(
+            self,
+            pop_resp, # this df must have cluster ids as columns
+            col_param: str, # parameter whose values are to be shown in the columns
+            avg_param: list, # parameters to average across
+    ):
+        """
+        Returns a dataframe showing responses as a function one parameter while averaging
+        over the other parameters.
+        
+        Args:
+        - pop_resp: A dataframe of the population response in which the columns are units.
+        - col_param: The parameter to show in the columns.
+        - avg_param: The parameter(s) to average across.
+        """
+
+        # groupby the parameter of interest
+        gb = pop_resp.groupby(col_param).agg(list)
+
+        # get an array of the column values and cluster ids
+        col_values = gb.index.values
+        units = [x for x in gb.columns.values if re.search(r'\d', x)]
+
+        # initialize dictionary for cross parameter averaged data
+        data = {'cluster': np.array([])}
+        for col in col_values:
+            data[col] = np.array([])
+
+        # create the cluster id column
+        for unit_id in units:
+            unit_ids = np.array([unit_id]*500)
+            data['cluster'] = np.concatenate((data['cluster'], unit_ids), axis = 0)
+
+        # get the number of parameter combos and length of response
+        param_combos = 1
+        for param in avg_param:
+            param_combos*=len(pop_resp[param].unique())
+        resp_len = len(pop_resp.loc[pop_resp.stimulus_condition == 1])
+
+         # create the firing rate value columns
+        try:
+            for col in col_values:
+                for unit_id in units:
+                    cc_avg = np.array(gb[unit_id][col]).reshape(param_combos,resp_len).mean(0)
+                    data[col] = np.concatenate((data[col], cc_avg), axis = 0)
+            return pd.DataFrame(data)
+        except ValueError:
+                        err_msg = """
+                        Failed to reshape response array. 
+                        Make sure col_param is not repeated
+                        in avg_param.
+                        """
+                        print(err_msg)
 
 class load_experiment(ephys_toolkit):
     """
@@ -893,51 +946,6 @@ class load_experiment(ephys_toolkit):
             norm=norm)
 
         return population
-    
-    def avg_across_param(
-            self,
-            pop_resp, # this df must have cluster ids as columns
-            col_param: str, # parameter whose values are to be shown in the columns
-            avg_param: list, # parameters to average across
-    ):
-
-        # groupby the parameter of interest
-        gb = pop_resp.groupby(col_param).agg(list)
-
-        # get an array of the column values and cluster ids
-        col_values = gb.index.values
-        units = [x for x in gb.columns.values if type(x) == int]
-
-        # initialize dictionary for cross parameter averaged data
-        data = {'cluster': np.array([])}
-        for col in col_values:
-            data[col] = np.array([])
-
-        # create the cluster id column
-        for unit_id in units:
-            unit_ids = np.array([unit_id]*500)
-            data['cluster'] = np.concatenate((data['cluster'], unit_ids), axis = 0)
-
-        # get the number of parameter combos and length of response
-        param_combos = 1
-        for param in avg_param:
-            param_combos*=len(pop_resp[param].unique())
-        resp_len = len(pop_resp.loc[pop_resp.stimulus_condition == 1])
-
-         # create the firing rate value columns
-        try:
-            for col in col_values:
-                for unit_id in units:
-                    cc_avg = np.array(gb[unit_id][col]).reshape(param_combos,resp_len).mean(0)
-                    data[col] = np.concatenate((data[col], cc_avg), axis = 0)
-            return pd.DataFrame(data)
-        except ValueError:
-                        err_msg = """
-                        Failed to reshape response array. 
-                        Make sure col_param is not repeated
-                        in avg_param.
-                        """
-                        print(err_msg)
                     
     def _stim_frame_map(self, dim, radius, edge):
         frame_map = {}
