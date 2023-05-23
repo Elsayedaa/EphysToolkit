@@ -1296,7 +1296,7 @@ class load_project(lfp_tools):
     """
 
     def __init__(self, project_path, probe = None, use_lfp_file = 0):
-        process_lfp.__init__(self)
+        lfp_tools.__init__(self)
         self.lfp_index = use_lfp_file
         self.probe = probe
         self.ppath = project_path
