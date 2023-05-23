@@ -73,6 +73,18 @@ type = "url"
 url = "https://github.com/Elsayedaa/PathExplorer/archive/refs/tags/v0.1.1.zip"
 
 [[package]]
+name = rhd
+version = "0.1.0"
+description = "A python module for reading Intan RHD2000 files - Updated 2023 version"
+category = "main"
+optional = false
+python-versions = "^3.8"
+
+[package.source]
+type = "url"
+url = "https://github.com/Elsayedaa/python_rhd/archive/refs/heads/main.zip"
+
+[[package]]
 name = "pdoc"
 version = "12.0.2"
 description = "API Documentation for Python Projects"
