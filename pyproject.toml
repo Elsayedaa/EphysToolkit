@@ -10,6 +10,7 @@ numpy = "^1.23.1"
 scipy = "^1.8.1"
 pandas = "^1.4.3"
 pathexplorer = {url = "https://github.com/Elsayedaa/PathExplorer/archive/refs/tags/v0.1.1.zip"}
+rhd = {url = "https://github.com/Elsayedaa/python_rhd/archive/refs/heads/main.zip"}
 
 [tool.poetry.dev-dependencies]
 pdoc = "^12.0.2"
