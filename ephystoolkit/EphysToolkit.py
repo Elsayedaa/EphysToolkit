@@ -3,11 +3,15 @@ import re
 import math
 import json
 import warnings
+import os.path
+import csv
 
 import numpy as np
 import scipy.io
 import pandas as pd
+import rhd
 from scipy import stats
+from scipy import signal
 
 from pathexplorer.PathExplorer import path_explorer
 
@@ -16,6 +20,7 @@ class ephys_toolkit:
 
     def __init__(self):
         self.SAMPLING_RATE = 20000
+        self.modpath = os.path.dirname(__file__)
 
     def _bin_events(self, bin_size, events):
         self.frames = bin_size ** -1
@@ -186,11 +191,13 @@ class ephys_toolkit:
 
         return np.array(m).T
 
-    def _gaussian_radius(self, dim=tuple, radius=int):
+    def _gaussian_radius(self, dim:tuple, radius:int):
         x, y = np.meshgrid(
             np.linspace(-1, 1, dim[0]),
             np.linspace(-1, 1, dim[1])
         )
+        
+        
         d = np.sqrt(x * x + y * y)
         sigma, mu = radius / 360, 0.0
         g = np.exp(-((d - mu) ** 2 / (2.0 * sigma ** 2)))
@@ -246,6 +253,12 @@ class ephys_toolkit:
                 rasters.append(list(unthreshed[i]))
         return rasters
 
+    def _linear_extrapolation(self, xd, yd, x):
+        y2, y1 = yd[-1], yd[-2]
+        x2, x1 = xd[-1], xd[-2]
+
+        return y1+(((x-x1)/(x2-x1))*(y2-y1))
+
     def raster(
             self,
             stims,  # Array of stimulus onset times
@@ -277,22 +290,13 @@ class ephys_toolkit:
             col_param: str, # parameter whose values are to be shown in the columns
             avg_param: list, # parameters to average across
     ):
-        """
-        Returns a dataframe showing responses as a function one parameter while averaging
-        over the other parameters.
-        
-        Args:
-        - pop_resp: A dataframe of the population response in which the columns are units.
-        - col_param: The parameter to show in the columns.
-        - avg_param: The parameter(s) to average across.
-        """
 
         # groupby the parameter of interest
         gb = pop_resp.groupby(col_param).agg(list)
 
         # get an array of the column values and cluster ids
         col_values = gb.index.values
-        units = [x for x in gb.columns.values if re.search(r'\d', x)]
+        units = [x for x in gb.columns.values if re.search(r'\d', str(x))]
 
         # initialize dictionary for cross parameter averaged data
         data = {'cluster': np.array([])}
@@ -311,19 +315,20 @@ class ephys_toolkit:
         resp_len = len(pop_resp.loc[pop_resp.stimulus_condition == 1])
 
          # create the firing rate value columns
-        try:
-            for col in col_values:
-                for unit_id in units:
-                    cc_avg = np.array(gb[unit_id][col]).reshape(param_combos,resp_len).mean(0)
-                    data[col] = np.concatenate((data[col], cc_avg), axis = 0)
-            return pd.DataFrame(data)
-        except ValueError:
-                        err_msg = """
-                        Failed to reshape response array. 
-                        Make sure col_param is not repeated
-                        in avg_param.
-                        """
-                        print(err_msg)
+#         try:
+        for col in col_values:
+            for unit_id in units:
+                cc_avg = np.array(gb[unit_id][col]).reshape(param_combos,resp_len).mean(0)
+                data[col] = np.concatenate((data[col], cc_avg), axis = 0)
+        return pd.DataFrame(data)
+#         except ValueError:
+#                         err_msg = """
+#                         Failed to reshape response array. 
+#                         Make sure col_param is not repeated
+#                         in avg_param.
+#                         """
+#                         print(err_msg)
+
 
 class load_experiment(ephys_toolkit):
     """
@@ -345,22 +350,31 @@ class load_experiment(ephys_toolkit):
 
     def __init__(self, spikefile, stimfile, logfile):
         ephys_toolkit.__init__(self)
+        
+        self.spikefile = spikefile # path to the spike file
+        self.stimfile = stimfile # path to the stim file
+        
+        self.spikes_mat = scipy.io.loadmat(spikefile)
+        self.stims_mat = scipy.io.loadmat(stimfile)
 
-        spikes_mat = scipy.io.loadmat(spikefile)
-        stims_mat = scipy.io.loadmat(stimfile)
-
-        self.spikes = spikes_mat['Data'][0]
-        self.stims = stims_mat['StimulusData'][0][0]
-        self.logfile = logfile
+        self.spikes = self.spikes_mat['Data'][0] # raw spikes dictionary
+        self.stims = self.stims_mat['StimulusData'][0][0] # raw stims dictionary
+        self.logfile = logfile # stimulus log data
+        self.nodf = False
         self._init_stim_data()
         self._init_spike_data()
         self.set_time_unit()
 
         self.parameters_matched = False
-
-        self.stim_conditions = self.stim_data[
-            'stim_condition_ids'
-        ].unique()
+        
+        if self.nodf:
+            self.stim_conditions = np.unique(
+                self.stim_data['stim_condition_ids']
+            )
+        else:
+            self.stim_conditions = self.stim_data[
+                'stim_condition_ids'
+            ].unique()
         
         if self.logfile != None:
             self._get_conditions_from_log()
@@ -386,11 +400,22 @@ class load_experiment(ephys_toolkit):
             'stim_stop_indicies': stims_stops[0],
             'stim_condition_ids': stims_condition_ids[0]
         }
-
-        self.stim_data = pd.DataFrame(stim_data)
-        """
-        A pandas dataframe with the stimulus data.
-        """
+        try:
+            self.stim_data = pd.DataFrame(stim_data)
+        except ValueError as e:
+            if str(e) == "All arrays must be of the same length":
+                warn_text = f"""
+                Stimulus start time, stop time, and condition 
+                arrays are unequal in length. This typically
+                only happens with natural image recordings.
+                If you include a stimulus log file in the data
+                folder, ephystoolkit will attempt to fix this.
+                Otherwise, the .stim_data attribute will return
+                a dictionary instead of a dataframe.
+                """
+                warnings.warn(warn_text, stacklevel = 4)
+                self.stim_data = stim_data
+                self.nodf = True
 
     # Generates the .spike_data attribute.
     def _init_spike_data(self):
@@ -426,10 +451,11 @@ class load_experiment(ephys_toolkit):
                 c_id = re.search(r0, line).group(1)
                 condition_ids.append(int(c_id))
                 
-            try:  
+            try: 
                 # replace conditions in experiment with conditions from log
                 self.stim_data.stim_condition_ids = condition_ids
                 self.stim_conditions = self.stim_data.stim_condition_ids.unique()
+
             except ValueError:
                 pass
             
@@ -442,53 +468,37 @@ class load_experiment(ephys_toolkit):
                 numbers = numbers.split(' ') # split into a list of conditon numbers
                 numbers = [int(x) for x in numbers] # format str into int
                 condition_ids += numbers #collect condition ids
+            
+            # Attempt to fix unequal stimulus arrays/missing values
+            if self.nodf:
+                stim_start_indicies = self.stim_data['stim_start_indicies']
+                stim_stop_indicies = self.stim_data['stim_stop_indicies']
+                stim_start_times = self.stim_data['stim_start_times']
+                stim_stop_times = self.stim_data['stim_stop_times']
+            else:      
+                stim_start_indicies = self.stim_data['stim_start_indicies'].values
+                stim_stop_indicies = self.stim_data['stim_stop_indicies'].values
+                stim_start_times = self.stim_data['stim_start_times'].values
+                stim_stop_times = self.stim_data['stim_stop_times'].values
 
-            ## This horrible block of code is here because the stimData matlab
-            ## file is missing the data the last two stimulus repeats
-            ## so it is added manually until the stimData file generation is fixed
-
-            # difference between consecutive start indicies
-            startindex_diff = (self.stim_data['stim_start_indicies'].values[-1] 
-                             - self.stim_data['stim_start_indicies'].values[-2])
-
-            # difference between consecutive stop indicies
-            stopindex_diff = (self.stim_data['stim_stop_indicies'].values[-1] 
-                             - self.stim_data['stim_stop_indicies'].values[-2])
-
-            # difference between consecutive start times
-            starttime_diff = (self.stim_data['stim_start_times'].values[-1] 
-                             - self.stim_data['stim_start_times'].values[-2])
-
-            # difference between consecutive stop times
-            stoptime_diff = (self.stim_data['stim_stop_times'].values[-1] 
-                             - self.stim_data['stim_stop_times'].values[-2])
-
-            # adding two additional start indicies 
-            start_ind_fixed = list(self.stim_data['stim_start_indicies'].values)
-            start_ind_fixed = start_ind_fixed + [start_ind_fixed[-1]-+startindex_diff, 
-                                                 start_ind_fixed[-1]+2*startindex_diff]
-            # adding two additional stop indicies 
-            stop_ind_fixed = list(self.stim_data['stim_stop_indicies'].values)
-            stop_ind_fixed = stop_ind_fixed + [stop_ind_fixed[-1]+stopindex_diff, 
-                                                 stop_ind_fixed[-1]+2*stopindex_diff]
-
-            # adding two additional start times 
-            start_time_fixed = list(self.stim_data['stim_start_times'].values)
-            start_time_fixed = start_time_fixed + [start_time_fixed[-1]+starttime_diff, 
-                                                 start_time_fixed[-1]+2*starttime_diff]
-            # adding two additional stop times 
-            stop_time_fixed = list(self.stim_data['stim_stop_times'].values)
-            stop_time_fixed = stop_time_fixed + [stop_time_fixed[-1]+stoptime_diff, 
-                                                 stop_time_fixed[-1]+2*stoptime_diff]
-
-            # fixed stim data dictionary
             stim_data_fixed = {
                 'stim_condition_ids': condition_ids,
-                'stim_start_indicies': start_ind_fixed,
-                'stim_stop_indicies': stop_ind_fixed,
-                'stim_start_times': start_time_fixed,
-                'stim_stop_times': stop_time_fixed
+                'stim_start_indicies': stim_start_indicies,
+                'stim_stop_indicies': stim_stop_indicies,
+                'stim_start_times': stim_start_times,
+                'stim_stop_times': stim_stop_times
             }
+            keys = list(stim_data_fixed.keys())
+
+            # extrapolate the missing values
+            for key in keys:
+                xd = np.arange(len(stim_data_fixed[key]))+1
+                yd = stim_data_fixed[key]
+                x = np.arange(len(yd), len(condition_ids))+1
+                y_pred = self._linear_extrapolation(xd, yd, x)
+                if 'indicies' in key:
+                    y_pred = np.round(y_pred)
+                stim_data_fixed[key] = np.concatenate((yd, y_pred))
             
             self.stim_data = pd.DataFrame(stim_data_fixed)
             self.stim_conditions = self.stim_data.stim_condition_ids.unique()
@@ -504,20 +514,26 @@ class load_experiment(ephys_toolkit):
         
         - bin_size: Time unit given relative to 1 second. The default unit is 1ms/0.001s.
         """
+        if self.nodf:
+            self.stim_data['stim_start_times'] = self._bin_events(bin_size,
+                self.stim_data['stim_start_indicies'])
 
-        self.stim_data['stim_start_times'] = self._bin_events(bin_size,
-                                                              self.stim_data['stim_start_indicies'].values)
+            self.stim_data['stim_stop_times'] = self._bin_events(bin_size,
+                self.stim_data['stim_stop_indicies'])  
+        else:
+            self.stim_data['stim_start_times'] = self._bin_events(bin_size,
+                self.stim_data['stim_start_indicies'].values)
 
-        self.stim_data['stim_stop_times'] = self._bin_events(bin_size,
-                                                             self.stim_data['stim_stop_indicies'].values)
+            self.stim_data['stim_stop_times'] = self._bin_events(bin_size,
+                self.stim_data['stim_stop_indicies'].values)
 
-        self.stim_data = self.stim_data[
-            ['stim_condition_ids',
-             'stim_start_indicies',
-             'stim_stop_indicies',
-             'stim_start_times',
-             'stim_stop_times']
-        ]
+            self.stim_data = self.stim_data[
+                ['stim_condition_ids',
+                 'stim_start_indicies',
+                 'stim_stop_indicies',
+                 'stim_start_times',
+                 'stim_stop_times']
+            ]
 
         for unit in self.spike_data:
             unit.update({
@@ -970,11 +986,275 @@ class load_experiment(ephys_toolkit):
         cond = self.stim_data.stim_condition_ids.values
         self.stim_frames = np.array([self.frame_map[i] for i in cond])
 
+class lfp_tools(ephys_toolkit):
 
-class load_project(ephys_toolkit):
+    #### initialize class with the necessary paths ###
+    def __init__(self):
+        ephys_toolkit.__init__(self)
+        self.low = 1
+        self.high = 120
+        
+    ### process the lfp data by running the necssary methods ###
+    def process_lfp(self, intan_file, probe = None):
+        """
+        This method runs the lfp processing pipeline and
+        generates two important attributes:
+        
+        - .lfp_heatmaps: contains a dictionary the heatmaps of the 
+          lfp data for each channel column and each stimulus contrast.
+          
+        - .depth_data: contains the depth in micrometeres of each 
+          channel normalized to the center of layer 4 as 0. 
+          Negative values are ventral to layer 4 and positive values
+          are dorsal to layer 4.
+        
+        """
+        self.probe_fol = os.path.join(self.modpath, 'probes')
+        valid_probes0 = os.listdir(self.probe_fol)
+        valid_probes = [os.path.splitext(x)[0] for x in valid_probes0]
+        if probe == None:
+            inputtext = fr"""
+            Please enter the probe used in this project. Available probes include: 
+            {valid_probes}. 
+            If the probe used in your recording is not included in the list, 
+            navigate to the folder where the ephystoolkit lirbary is installed. 
+            
+            If you are using Anaconda on windows, this folder should be located at:
+            C:\Users\(username)\conda\envs\(env_name)\lib\site-packages\ephystoolkit
+            
+            If you are using Anaconda on Linux, this folder should be located at:
+            ~/anaconda3/envs/(env_name)/lib/(Python_version)/site-packages/ephystoolkit'
+            
+            Once you are in the module folder, navigate the to folder called 'probes'
+            and copy a csv file mapping your channel ids to their distance from the tip
+            of the probe. Each line index should correspond to the channel id. Indexes
+            for this purpose start at 1. For reference, check out any of the included
+            csv files."""
+            
+            probe = input(inputtext)
+        while probe not in valid_probes:
+            inputtext = fr"""
+            {probe} is not included in the list of available probes. The list of available 
+            probes includes: 
+            {valid_probes}
+            If the probe used in your recording is not included in the list, 
+            navigate to the folder in which the ephys_toolkit module is installed. 
+
+            If you are using Anaconda on windows, this folder should be located at:
+            C:\Users\(username)\conda\envs\(env_name)\lib\site-packages\ephystoolkit
+
+            If you are using Anaconda on Linux, this folder should be located at:
+            ~/anaconda3/envs/(env_name)/lib/(Python_version)/site-packages/ephystoolkit
+
+            Once you are in the module folder, navigate the to folder called 'probes'
+            and copy a csv file mapping your channel ids to their distance from the tip
+            of the probe. Each line index should correspond to the channel id. Indexes
+            for this purpose start at 1. For reference, check out any of the included
+            csv files.
+            """
+            probe = input(inputtext)
+        else:
+            pass
+        
+        self.probe = probe
+        self.intan_file = intan_file
+        self.channel_file = os.path.join(self.probe_fol, f"{probe}.csv")
+        
+        self._load_lfp_data()
+        
+        print("Sorting channel depth...")
+        self._sort_depth()
+        
+        print("Retrieving stimulus onset times...")
+        self._get_onsets()
+        
+        print("Generating lfp heatmap...")
+        self._get_lfp_heatmap()
+        
+        print("Normalizing channel depth to layer 4 depth...")
+        self._find_l4_distances()
+        self._normalize_depth()
+        print("Done!")
+    
+    ### bandpass filter for the raw voltage data ###
+    def _bandpass_filter(self, signal):
+        
+        #SAMPLING_RATE = 20000.0
+        nyqs = 0.5 * self.SAMPLING_RATE
+        low = self.low/nyqs
+        high = self.high/nyqs
+
+        order = 2
+
+        b, a = scipy.signal.butter(order, [low, high], 'bandpass', analog = False)
+        y = scipy.signal.filtfilt(b, a, signal, axis=0)
+
+        return y
+
+    ### load the necessary data ###
+    def _load_lfp_data(self):
+        
+        # load the rhd file
+        self.intan_data = data = rhd.read_data(self.intan_file)
+        self.amplifier_data = self.intan_data['amplifier_data']
+        self.board_data = self.intan_data['board_dig_in_data']
+
+        # load the channel file
+        self.channel_data = []
+        with open(self.channel_file, newline='') as channels:
+            for row in csv.reader(channels):
+                self.channel_data.append(np.array(row).astype(float))
+        self.channel_data = np.array(self.channel_data)
+
+        # bandpass filter each channel
+        print("Bandpass filtering the data...")
+        self.amplifier_data_filt = np.array([
+            self._bandpass_filter(channel) for
+            channel in self.amplifier_data
+        ]
+        )
+        
+    ### sort amplifier data by channel depth ###
+    def _sort_depth(self):
+        ## 0 = deepest
+        
+        # adjust single channels offset on x by a negligable amount
+        if self.probe == '64D':
+            self.channel_data[np.where(self.channel_data == 16)] = 20
+            self.channel_data[np.where(self.channel_data == -16)] = -20
+        if self.probe == '64H':
+            self.channel_data[np.where(self.channel_data == 20)] = 22.5
+            self.channel_data[np.where(self.channel_data == -20)] = -22.5
+            self.channel_data[np.where(self.channel_data == 180.1)] = 177.6
+            self.channel_data[np.where(self.channel_data == 220.1)] = 222.6
+        
+        # index ordered by distance from tip
+        self.y_index = np.argsort(self.channel_data[:,1])[::-1]
+        
+        # list of channel depths ordered by distance from tip
+        self.c_depth = self.channel_data[self.y_index][:,1]
+
+        # unique x coordinates for the channels
+        xarr = np.unique(self.channel_data[:,0])
+        
+        # get channel depths along specific columns
+        self.channels_bycol = {}
+        for x_d in xarr: 
+            col = np.where(self.channel_data[self.y_index][:,0] == x_d)[0]
+            self.channels_bycol[x_d] = {
+                'y_index': self.y_index[col],
+                'c_depth': self.channel_data[self.y_index[col]][:,1]
+            }
+        
+        # get amplifier data along specific columns
+        self.ampdata_bycol = {}    
+        for col, subdict in self.channels_bycol.items():
+            self.ampdata_bycol[col] = self.amplifier_data_filt[
+                subdict['y_index']
+            ]
+
+    
+    ### Get the onset times of each stimuls contrast ###
+    def _get_onsets(self):
+        
+        # get indices of when contrast 0 is on
+        stim0 = self.board_data[1]
+        stim0_on_index = (np.where(stim0 == True)[0])
+
+        # get indices of when contrast 1 is on
+        stim1 = self.board_data[2]
+        stim1_on_index = (np.where(stim1 == True)[0])
+
+        # get the onset indices of contrast 0
+        first0_on = stim0_on_index[0]
+        self.c0_onsets = [first0_on]
+        for i0, val in enumerate(stim0_on_index[1:]):
+            i1 = i0+1
+            if stim0_on_index[i0]+1 != (stim0_on_index[i1]):
+                self.c0_onsets.append(val)
+
+        # get the onset indices of contrast 1
+        first1_on = stim1_on_index[0]
+        self.c1_onsets = [first1_on]
+        for i0, val in enumerate(stim1_on_index[1:]):
+            i1 = i0+1
+            if stim1_on_index[i0]+1 != (stim1_on_index[i1]):
+                self.c1_onsets.append(val)
+                
+    ### get the heatmap of lfp data averaged across stimulus repeats ###
+    def _get_lfp_heatmap(self):
+
+        self.lfp_heatmaps = {}
+        for col, subdict in self.ampdata_bycol.items():
+            self.lfp_heatmaps[col] = {
+                'contrast0': np.array([
+                    subdict[:,i:i+5000] for i in self.c0_onsets
+                ]).mean(0),
+                'contrast1': np.array([
+                    subdict[:,i:i+5000] for i in self.c1_onsets
+                ]).mean(0),
+
+            }
+        
+    ### assign a depth to each channel relative to layer 4 ###
+    def _find_l4_distances(self):
+        
+        self.l4_distances = {}
+        self.l4_distance_list = []
+        for col, chandata in self.channels_bycol.items():
+            lfp_heatmap = self.lfp_heatmaps[col]
+            self.l4_distances[col] = {}
+            for c, contrast in lfp_heatmap.items():
+            
+                # find the timepoint of the deepest sink
+                pe_delay = 1000
+                tmin = np.where(contrast[:,pe_delay:] == contrast[:,pe_delay:].min())[1][0]
+                tmin_curve = contrast[:,tmin+pe_delay]
+
+                ## Find the center of layer 4 via cubic spline interpolation
+
+                # flip the order because the interpolation function
+                # strictly requires an x axis with ascending order
+                x = chandata['c_depth'][::-1]
+                y = tmin_curve
+
+                # initialize the interpolation function
+                cs = scipy.interpolate.CubicSpline(x, y)
+
+                # interpolate the data and flip it back to the correct order
+                xnew = np.linspace(0, x[-1], 1575)[::-1]
+                ynew = cs(xnew)[::-1]
+
+                # get the layer 4 distance from tip
+                l4_distance = xnew[np.where(ynew == ynew.min())[0][0]].round(2)
+                self.l4_distances[col][c] = l4_distance
+                self.l4_distance_list.append(l4_distance)
+        self.l4_distance_list = np.array(self.l4_distance_list)
+    
+    def _normalize_depth(self):
+        
+        # find the average distance across channel
+        # columns and stimulus contrasts
+        avg_distance = self.l4_distance_list.mean()
+
+        # normalize channel distances by distance from layer 4
+        # negative distances = below layer 4
+        # positive distances = above layer 4
+        l4_normalization = self.c_depth - avg_distance
+
+        # compile the depth data into a dataframe
+        depth_data = {
+            'channel': self.y_index,
+            'distance': l4_normalization
+        }
+        self.depth_data = pd.DataFrame(depth_data)        
+
+class load_project(lfp_tools):
     """
     Initialize the load_project class with a full path to the
-    directory containing the project files.
+    directory containing the project files. If the LFP data rhd
+    file is included in the project directory, this class will 
+    automatically process the LFP data for the project. 
     
     The .workbook attribute contains a list of dictionaries
     with the following structure:
@@ -983,13 +1263,28 @@ class load_project(ephys_toolkit):
       
           {
           
-              'section_id': int,
+              'section_id': int - Identification number of the recording 
+               section,
               
-              'spike_sorting_metrics': dataframe,
+              'spike_sorting_metrics': Pandas dataframe - Contains spike
+               sorting metrics data,
+              
+              'lfp_heatmaps': dictionary - Contains the lfp heatmap
+               at each channel column and stimulus contrast,
+              
+              'depth_data': Pandas dataframe - Contains the distance of each
+               channel of the probe relative to layer 4,
               
               'blocks': [
               
-                  {'block_id': int, 'experiment', experiment object},
+                  {
+                  
+                  'block_id': int - Identification number of the recording block, 
+                  
+                  'experiment', experiment object - Contains the experiment data for
+                   the given block
+                  
+                  },
                   
                   ]
                   
@@ -1000,8 +1295,10 @@ class load_project(ephys_toolkit):
     - project_path: Path to the directory containing the project files.
     """
 
-    def __init__(self, project_path):
-        ephys_toolkit.__init__(self)
+    def __init__(self, project_path, probe = None, use_lfp_file = 0):
+        process_lfp.__init__(self)
+        self.lfp_index = use_lfp_file
+        self.probe = probe
         self.ppath = project_path
         self._init_project_workbook()
 
@@ -1031,24 +1328,87 @@ class load_project(ephys_toolkit):
 
         # find metrics files
         metrics_files = explorer.findext(self.ppath, '.json', r='metrics_isolation')
+        metrics_files.sort(key=lambda x: int(re.search(r'Section_(\d{1,})', x).group(1)))
+        
+        # find checkerboard rhd files
+        rhd_files = explorer.findext(self.ppath, '.rhd')
+        rhd_files.sort(key=lambda x: int(re.search(r'Section_(\d{1,})', x).group(1)))
+        
+        # group together multiple checkerboard recordings
+        # from the same section
+        i = 0
+        for rhd_file in rhd_files[1:]:
+            if type(rhd_files[i])!=list:
+                r = r"[A-Z][A-Z]_M\d{1,}_Section_(\d)"
+                id_sec_post = re.search(r, rhd_file).group(0)
+                id_sec_pre = re.search(r, rhd_files[i]).group(0)
+                if id_sec_post == id_sec_pre:
+                    rhd_files[i] = [rhd_files[i], rhd_file]
+                    post_index = rhd_files.index(rhd_file)
+                    del rhd_files[post_index]
+
+            elif (type(rhd_files[i])==list):
+                id_sec_post = re.search(r, rhd_file).group(0)
+                id_sec_pre = re.search(r, rhd_files[i][0]).group(0)
+                if id_sec_post == id_sec_pre:
+                    rhd_files[i].append(rhd_file)
+                    post_index = rhd_files.index(rhd_file)
+                    del rhd_files[post_index]
+            else:
+                i+=1
 
         ################################################################################
 
         # compile the workbook
         self.workbook = []
-
-        # compile spike sorting metrics first
+        
+        # compile metrics
         for metrics_file in metrics_files:
             section_parent = int(re.search(r'Section_(\d{1,})', metrics_file).group(1))
             df = self.spike_sorting_metrics(metrics_file)
-
             self.workbook.append(
                 {
                     'section_id': section_parent,
                     'spike_sorting_metrics': df,
+                    'lfp_heatmaps': None,
+                    'depth_data': None,
                     'blocks': []
                 }
             )
+            
+        # compile rhd
+        if rhd_files == []:
+            warn_text = """
+            No LFP data files found in this project folder. LFP data will be
+            unavailable for this project. Please include the LFP data rhd file 
+            in the project folder if you want to access the LFP data.
+            """
+            warnings.warn(warn_text, stacklevel = 4)
+        else:
+            for rhd_file in rhd_files:
+                if (type(rhd_file) == list) & (self.lfp_index == 0):
+                    warn_text = """
+                    WARNING: More than one LFP data file found in this section.
+                    Defaulting to the first LFP file found in the section. If 
+                    You wish to change which file to be used, pass an integer 
+                    value to the use_lfp_file parameter of the load_project class
+                    corresponding to the file you wish to use. 
+                    (ie: load_project(use_lfp_file = 2) lets you use the 2nd LFP 
+                    data file.).
+                    """
+                    warnings.warn(warn_text, stacklevel = 4)
+                    
+                    rhd_file = rhd_file[self.lfp_index]
+                elif (type(rhd_file) == list) & (self.lfp_index != 0):
+                    use_lfp_file = use_lfp_file-1
+                    rhd_file = rhd_file[self.lfp_index]
+                else:
+                    pass
+                
+                self.process_lfp(rhd_file, self.probe)
+                section_parent = int(re.search(r'Section_(\d{1,})', rhd_file).group(1))
+                self.workbook[section_parent-1]['lfp_heatmaps'] = self.lfp_heatmaps
+                self.workbook[section_parent-1]['depth_data'] = self.depth_data
 
         # match experiment (block) objects to section
         for matched_files in list(matched_block_files):
