@@ -102,6 +102,9 @@ class ephys_toolkit:
         # theta
         theta = -np.radians(ang);
         xyTheta = y * np.cos(theta) - x * np.sin(theta);
+        
+        # phi
+        phi = np.radians(phi)
 
         # Spatial Frenquency
         degreePerPixel = windowSizeX_Visual / windowSizeX_Pixel
