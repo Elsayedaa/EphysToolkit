@@ -1,20 +1,22 @@
-[tool.poetry]
+[project]
 name = "ephystoolkit"
 version = "0.1.0"
-description = ""
-authors = ["Ahmad Elsayed <elsayeda.bis@gmail.com>"]
+description = "Custom Python modules for handling electrophysiology data produced by the Cang Lab at UVA."
+authors = [
+    {name = "Elsayedaa",email = "elsayeda.bis@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy (>=1.23.1,<2.0.0)",
+    "scipy (>=1.8.1,<2.0.0)",
+    "pandas (>=1.4.3,<2.0.0)",
+    "mat73 (>=0.65,<0.66)",
+    "pathexplorer @ https://github.com/Elsayedaa/PathExplorer/archive/refs/tags/v0.1.1.zip",
+    "rhd @ https://github.com/Elsayedaa/python_rhd/archive/refs/heads/main.zip"
+]
 
-[tool.poetry.dependencies]
-python = "^3.8"
-numpy = "^1.23.1"
-scipy = "^1.8.1"
-pandas = "^1.4.3"
-pathexplorer = {url = "https://github.com/Elsayedaa/PathExplorer/archive/refs/tags/v0.1.1.zip"}
-rhd = {url = "https://github.com/Elsayedaa/python_rhd/archive/refs/heads/main.zip"}
-
-[tool.poetry.dev-dependencies]
-pdoc = "^12.0.2"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
