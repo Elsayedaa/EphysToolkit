@@ -5,6 +5,7 @@ import json
 import warnings
 import os.path
 import csv
+import mat73
 
 import numpy as np
 import scipy.io
@@ -353,15 +354,27 @@ class load_experiment(ephys_toolkit):
 
     def __init__(self, spikefile, stimfile, logfile):
         ephys_toolkit.__init__(self)
-        
+        self.stim_m73 = None
+        self.spike_m73 = None
         self.spikefile = spikefile # path to the spike file
         self.stimfile = stimfile # path to the stim file
         
-        self.spikes_mat = scipy.io.loadmat(spikefile)
-        self.stims_mat = scipy.io.loadmat(stimfile)
-
-        self.spikes = self.spikes_mat['Data'][0] # raw spikes dictionary
-        self.stims = self.stims_mat['StimulusData'][0][0] # raw stims dictionary
+        try:
+            self.spikes_mat = scipy.io.loadmat(spikefile)
+            self.spikes = self.spikes_mat['Data'][0] # raw spikes dictionary
+        except NotImplementedError:
+            self.spike_m73 = True
+            self.spikes_mat = mat73.loadmat(spikefile)
+            self.spikes = self.spikes_mat['Data']
+            
+        try:
+            self.stims_mat = scipy.io.loadmat(stimfile)
+            self.stims = self.stims_mat['StimulusData'][0][0] # raw stims dictionary
+        except NotImplementedError:
+            self.stim_m73 = True
+            self.stims_mat = mat73.loadmat(stimfile)
+            self.stims = self.stims_mat['StimulusData']
+            
         self.logfile = logfile # stimulus log data
         self.nodf = False
         self._init_stim_data()
@@ -393,16 +406,23 @@ class load_experiment(ephys_toolkit):
 
     # Generates the .stim_data attribute.
     def _init_stim_data(self):
-
-        stims_starts = self.stims[0]
-        stims_stops = self.stims[1]
-        stims_condition_ids = self.stims[2]
-
-        stim_data = {
-            'stim_start_indicies': stims_starts[0],
-            'stim_stop_indicies': stims_stops[0],
-            'stim_condition_ids': stims_condition_ids[0]
-        }
+        
+        if self.stim_m73:
+            stim_data = {
+                'stim_start_indicies': self.stims['stimulusOnsets'],
+                'stim_stop_indicies': self.stims['stimulusOffsets'],
+                'stim_condition_ids': self.stims['conditionNumbers']
+            }
+        else:
+            stims_starts = self.stims[0]
+            stims_stops = self.stims[1]
+            stims_condition_ids = self.stims[2]
+            stim_data = {
+                'stim_start_indicies': stims_starts[0],
+                'stim_stop_indicies': stims_stops[0],
+                'stim_condition_ids': stims_condition_ids[0]
+            }
+        
         try:
             self.stim_data = pd.DataFrame(stim_data)
         except ValueError as e:
@@ -422,17 +442,28 @@ class load_experiment(ephys_toolkit):
 
     # Generates the .spike_data attribute.
     def _init_spike_data(self):
-
-        self.spike_data = [
-            {
-                # 'cluster_id':unit[0][0][0],
-                'channel_id': unit[1][0][0],
-                'spike_index': unit[2][0],
-                'spike_time': unit[3][0]
-            }
-            for unit in
-            self.spikes
-        ]
+        if self.spike_m73:
+            ci = [int(i) for i in self.spikes['ChannelID']]
+            si = self.spikes['SpikePoints']
+            st = self.spikes['SpikeTimes']
+            self.spike_data = [
+                {
+                    'channel_id': ci[i],
+                    'spike_index': si[i],
+                    'spike_time': st[i]
+                }
+                for i in range(len(st))
+            ]
+        else:
+            self.spike_data = [
+                {
+                    'channel_id': unit[1][0][0],
+                    'spike_index': unit[2][0],
+                    'spike_time': unit[3][0]
+                }
+                for unit in
+                self.spikes
+            ]
         """
         A dictionary object with the spiking data.
         """
@@ -538,11 +569,17 @@ class load_experiment(ephys_toolkit):
                  'stim_stop_times']
             ]
 
-        for unit in self.spike_data:
-            unit.update({
-                'rel_spike_time': self._bin_events(bin_size,
-                                                   unit['spike_index'])
-            })
+        for i, unit in enumerate(self.spike_data):
+            try:
+                unit.update({
+                    'rel_spike_time': self._bin_events(bin_size,
+                                                       unit['spike_index'])
+                })
+            except TypeError as e:
+                if 'NoneType' in str(e):
+                    print(f"No spikes recorded for unit {i}, skipping...")
+                else:
+                    raise TypeError
 
     def condition_times(self, condition):
         """
