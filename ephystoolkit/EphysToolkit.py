@@ -614,125 +614,146 @@ class load_experiment(ephys_toolkit):
         
         - params_file: Path to the stimulus parameters file.
         """
-        # 
-
-        # regex to get the parameter names + values
-        name_identifier = r'Var\d{1,}Val'
-        val_identifier = r'var\d{1,}value'
-
-        # load the parameter file and extract the keys
-        params = scipy.io.loadmat(params_file)
-        param_keys = list(params.keys())
         
-        if 'fnames' in param_keys: # if experiment is natural images
-            
-            # get the stim file names
-            stim_file_names = [
-                name[0][0] for 
-                name in scipy.io.loadmat(params_file)['fnames']
-            ]
-            
-            # make a dictionary for the parameter mapping
-            ni_filemap = {
-                'condition': [],
-                'size': [],
-                'filter': [],
-                'file': []
-            }
-            
-            # match condition to parameters
-            freg = r'^[A-Z]{2,3}'
-            for i in self.stim_conditions:
-                if i%2 == 0: # if condition is even
-                    
-                    #append condition & size
-                    ni_filemap['condition'].append(i)
-                    ni_filemap['size'].append(60)
-                    
-                    #append filename
-                    filename = stim_file_names[int(i/2)-1]
-                    ni_filemap['file'].append(filename) 
-                    
-                    #append filtering condition
-                    filt = re.search(freg, filename).group(0)
-                    ni_filemap['filter'].append(filt)
-            
-                else: # if condition is odd
-                    #append condition & size
-                    ni_filemap['condition'].append(i)
-                    ni_filemap['size'].append(30)
-                    
-                    #append filename
-                    filename = stim_file_names[int((i+1)/2)-1]
-                    ni_filemap['file'].append(filename)
-                    
-                    #append filtering condition
-                    filt = re.search(freg, filename).group(0)
-                    ni_filemap['filter'].append(filt)
-                    
-            self.parameter_map = pd.DataFrame(ni_filemap) 
+        # if parameters are given in a log file
+        if os.path.splitext(params_file)[1] == '.log':
             df = self.stim_data
+            with open(params_file, 'r') as f:
+                lines = f.readlines()[1:-2]
+                
+            insert = []
+            for line in lines:
+                items = re.split(r'\t+', line)[2:-1]
+                dic = {
+                    item.split(':')[0]:item.split(':')[1].strip(' ') 
+                    for item in items
+                }
+                insert.append(dic)
+                
+            insert = pd.DataFrame(insert)
+            newcol = [list(df.columns)[0]] + list(insert.columns) + list(df.columns)[1:]
+            self.stim_data = df.join(insert)[newcol]
             
-            # get the parameters to insert into the original dataframe
-            insert = []
-            for cond in df.stim_condition_ids.values:
-                arr = self.parameter_map.loc[self.parameter_map.condition == cond].values[0]
-                insert.append(arr)
-            insert = pd.DataFrame(insert, columns=self.parameter_map.columns.values)
+        # if parameters are given in a matlab file        
+        elif os.path.splitext(params_file)[1] == '.mat':
+            
+            # load the parameter file and extract the keys
+            params = scipy.io.loadmat(params_file)
+            param_keys = list(params.keys())
 
-            # insert the parameter values into the original dataframe
-            df1 = df.join(insert)
+            # regex to get the parameter names + values
+            name_identifier = r'Var\d{1,}Val'
+            val_identifier = r'var\d{1,}value'
 
-            # reset the stim_data attribute
-            self.stim_data = df1[
-                list([df.columns.values[0]])
-                + list(self.parameter_map.columns.values[1:])
-                + list(
-                    df.columns.values[1:]
-                )
-                ]
-        
-        else: # if experiment is gratings or checkerboard
-            # use regex to get the param names and values
-            name_keys = [key for key in param_keys if re.search(name_identifier, key)]
-            val_keys = [key for key in param_keys if re.search(val_identifier, key)]
+            if 'fnames' in param_keys: # if experiment is natural images
 
-            # get the condition numbers
-            condition_range = len(params[val_keys[0]][0])
-            condition_ids = [i + 1 for i in range(condition_range)]
-
-            # map conditions to parameter values
-            parameter_map = {'condition': condition_ids}
-            for i in range(len(name_keys)):
-                parameter_name = str(params[name_keys[i]][0])
-                parameter_values = np.array(params[val_keys[i]][0])
-
-                parameter_map[parameter_name] = parameter_values
-
-                # parameter dataframe + the original stim_data dataframe
-            self.parameter_map = pd.DataFrame(parameter_map)
-            df = self.stim_data
-
-            # get the parameters to insert into the original dataframe
-            insert = []
-            for cond in df.stim_condition_ids.values:
-                arr = self.parameter_map.loc[self.parameter_map.condition == cond].values[0]
-                insert.append(arr)
-            insert = pd.DataFrame(insert, columns=self.parameter_map.columns.values)
-
-            # insert the parameter values into the original dataframe
-            df1 = df.join(insert)
-
-            # reset the stim_data attribute
-            self.stim_data = df1[
-                list([df.columns.values[0]])
-                + list(self.parameter_map.columns.values[1:])
-                + list(
-                    df.columns.values[1:]
-                )
+                # get the stim file names
+                stim_file_names = [
+                    name[0][0] for 
+                    name in scipy.io.loadmat(params_file)['fnames']
                 ]
 
-        self.parameters_matched = True
+                # make a dictionary for the parameter mapping
+                ni_filemap = {
+                    'condition': [],
+                    'size': [],
+                    'filter': [],
+                    'file': []
+                }
+
+                # match condition to parameters
+                freg = r'^[A-Z]{2,3}'
+                for i in self.stim_conditions:
+                    if i%2 == 0: # if condition is even
+
+                        #append condition & size
+                        ni_filemap['condition'].append(i)
+                        ni_filemap['size'].append(60)
+
+                        #append filename
+                        filename = stim_file_names[int(i/2)-1]
+                        ni_filemap['file'].append(filename) 
+
+                        #append filtering condition
+                        filt = re.search(freg, filename).group(0)
+                        ni_filemap['filter'].append(filt)
+
+                    else: # if condition is odd
+                        #append condition & size
+                        ni_filemap['condition'].append(i)
+                        ni_filemap['size'].append(30)
+
+                        #append filename
+                        filename = stim_file_names[int((i+1)/2)-1]
+                        ni_filemap['file'].append(filename)
+
+                        #append filtering condition
+                        filt = re.search(freg, filename).group(0)
+                        ni_filemap['filter'].append(filt)
+
+                self.parameter_map = pd.DataFrame(ni_filemap) 
+                df = self.stim_data
+
+                # get the parameters to insert into the original dataframe
+                insert = []
+                for cond in df.stim_condition_ids.values:
+                    arr = self.parameter_map.loc[self.parameter_map.condition == cond].values[0]
+                    insert.append(arr)
+                insert = pd.DataFrame(insert, columns=self.parameter_map.columns.values)
+
+                # insert the parameter values into the original dataframe
+                df1 = df.join(insert)
+
+                # reset the stim_data attribute
+                self.stim_data = df1[
+                    list([df.columns.values[0]])
+                    + list(self.parameter_map.columns.values[1:])
+                    + list(
+                        df.columns.values[1:]
+                    )
+                    ]
+
+            else: # if experiment is gratings or checkerboard
+                # use regex to get the param names and values
+                name_keys = [key for key in param_keys if re.search(name_identifier, key)]
+                val_keys = [key for key in param_keys if re.search(val_identifier, key)]
+
+                # get the condition numbers
+                condition_range = len(params[val_keys[0]][0])
+                condition_ids = [i + 1 for i in range(condition_range)]
+
+                # map conditions to parameter values
+                parameter_map = {'condition': condition_ids}
+                for i in range(len(name_keys)):
+                    parameter_name = str(params[name_keys[i]][0])
+                    parameter_values = np.array(params[val_keys[i]][0])
+
+                    parameter_map[parameter_name] = parameter_values
+
+                    # parameter dataframe + the original stim_data dataframe
+                self.parameter_map = pd.DataFrame(parameter_map)
+                df = self.stim_data
+
+                # get the parameters to insert into the original dataframe
+                insert = []
+                for cond in df.stim_condition_ids.values:
+                    arr = self.parameter_map.loc[self.parameter_map.condition == cond].values[0]
+                    insert.append(arr)
+                insert = pd.DataFrame(insert, columns=self.parameter_map.columns.values)
+
+                # insert the parameter values into the original dataframe
+                df1 = df.join(insert)
+
+                # reset the stim_data attribute
+                self.stim_data = df1[
+                    list([df.columns.values[0]])
+                    + list(self.parameter_map.columns.values[1:])
+                    + list(
+                        df.columns.values[1:]
+                    )
+                    ]
+
+            self.parameters_matched = True
 
     def _pr_unitcols(
             self,
