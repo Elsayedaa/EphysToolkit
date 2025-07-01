@@ -990,7 +990,7 @@ class load_experiment(ephys_toolkit):
         return population
     
     def map_rf(self, rfunc, xpix, ypix, xvis, yvis, radius):
-        self._stim_frame_map(self, xpix, ypix, xvis, yvis, radius)
+        self._stim_frame_map(xpix, ypix, xvis, yvis, radius)
         fmap = np.array([x for x in self.frame_map.values()])
         if fmap.T.shape[-1] == rfunc.shape[0]:
             return np.dot(fmap.T, rfunc)
