@@ -20,10 +20,9 @@ from pathexplorer.PathExplorer import path_explorer
 class ephys_toolkit:
 
     def __init__(self):
-        @private
-        self.SAMPLING_RATE = 20000
-        @private
-        self.modpath = os.path.dirname(__file__)
+        
+        @private self.SAMPLING_RATE = 20000
+        @private self.modpath = os.path.dirname(__file__)
 
     def _bin_events(self, bin_size, events):
         self.frames = bin_size ** -1
