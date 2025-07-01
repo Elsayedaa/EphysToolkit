@@ -424,7 +424,7 @@ class load_experiment(ephys_toolkit):
             self.spike_data = [
                 {
                     'channel_id': unit[1][0][0],
-                    'depth': self.depth_data.loc[self.depth_data.channel == unit[1][0][0]]['distance'][0]
+                    'depth': self.depth_data.loc[self.depth_data.channel == unit[1][0][0]]['distance'][0],
                     'spike_index': unit[2][0],
                     'spike_time': unit[3][0]
                 }
