@@ -602,8 +602,8 @@ class load_experiment(ephys_toolkit):
             self.stim_data = df.join(insert)[newcol]
             
             # make the parameter map
-            stop_index = list(ex3.stim_data.columns).index('stim_start_indicies')
-            df_new = ex3.stim_data[list(ex3.stim_data.columns)[:stop_index]]
+            stop_index = list(self.stim_data.columns).index('stim_start_indicies')
+            df_new = self.stim_data[list(self.stim_data.columns)[:stop_index]]
             df_new.columns = ['condition']+list(df_new.columns)[1:]
             df_new = df_new.drop_duplicates().sort_values(by = 'condition')
             self.parameter_map = df_new.reset_index().drop('index', axis = 1)
