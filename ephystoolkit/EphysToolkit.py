@@ -21,12 +21,12 @@ class ephys_toolkit:
 
     def __init__(self):
         
-        @private self.SAMPLING_RATE = 20000
-        @private self.modpath = os.path.dirname(__file__)
+        self._SAMPLING_RATE = 20000
+        self._modpath = os.path.dirname(__file__)
 
     def _bin_events(self, bin_size, events):
         self.frames = bin_size ** -1
-        self.numerator = self.SAMPLING_RATE / self.frames
+        self.numerator = self._SAMPLING_RATE / self.frames
 
         return events / self.numerator
 
@@ -1043,7 +1043,7 @@ class lfp_tools(ephys_toolkit):
           are dorsal to layer 4.
         
         """
-        self.probe_fol = os.path.join(self.modpath, 'probes')
+        self.probe_fol = os.path.join(self._modpath, 'probes')
         valid_probes0 = os.listdir(self.probe_fol)
         valid_probes = [os.path.splitext(x)[0] for x in valid_probes0]
         if probe == None:
@@ -1114,7 +1114,7 @@ class lfp_tools(ephys_toolkit):
     def _bandpass_filter(self, signal):
         
         #SAMPLING_RATE = 20000.0
-        nyqs = 0.5 * self.SAMPLING_RATE
+        nyqs = 0.5 * self._SAMPLING_RATE
         low = self.low/nyqs
         high = self.high/nyqs
 
