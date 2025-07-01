@@ -20,7 +20,9 @@ from pathexplorer.PathExplorer import path_explorer
 class ephys_toolkit:
 
     def __init__(self):
+        @private
         self.SAMPLING_RATE = 20000
+        @private
         self.modpath = os.path.dirname(__file__)
 
     def _bin_events(self, bin_size, events):
@@ -987,6 +989,14 @@ class load_experiment(ephys_toolkit):
             norm=norm)
 
         return population
+    
+    def map_rf(self, rfunc, xpix, ypix, xvis, yvis, radius):
+        self._stim_frame_map(self, xpix, ypix, xvis, yvis, radius)
+        fmap = np.array([x for x in self.frame_map.values()])
+        if fmap.T.shape[-1] == rfunc.shape[0]:
+            return np.dot(fmap.T, rfunc)
+        else:
+            raise _InvalidRfuncShape((fmap.T.shape[-1], rfunc.shape[0]))
                     
     def _stim_frame_map(self, xpix, ypix, xvis, yvis, radius):
         frame_map = {}
@@ -1504,5 +1514,17 @@ class _UnrecognizedColumnsInput(Exception):
     def __init__(self, arg):
         self.message = f"""
         Invalid input for 'columns'. Please select one of: {arg}.
+        """
+        super().__init__(self.message)
+        
+class _InvalidRfuncShape(Exception):
+    """
+    Exception raised for invalid shape of the response
+    function given for receptive field mapping.
+    """
+
+    def __init__(self, arg):
+        self.message = f"""
+        Shape mistmatch: Frame map dim - 1 ({arg[0]}) != Response function dim 0 ({arg[1]}).
         """
         super().__init__(self.message)
