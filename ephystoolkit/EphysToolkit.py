@@ -48,12 +48,12 @@ class ephys_toolkit:
         """
         return (array / stim_reps) * self.frames
     
-    def apply_temporal_smoothing(self, trial_data, kernel, t_axis):
+    def apply_temporal_smoothing(self, x, k, t_axis):
         return np.apply_along_axis(
                         lambda m: np.convolve(
-                            m, kernel, 
+                            m, k, 
                             mode='same'
-                        ), axis=t_axis, arr=trial_data
+                        ), axis=t_axis, arr=x
                     )
     
     def static_grating(
