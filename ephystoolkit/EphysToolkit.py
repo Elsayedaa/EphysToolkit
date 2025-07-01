@@ -48,6 +48,14 @@ class ephys_toolkit:
         """
         return (array / stim_reps) * self.frames
     
+    def apply_temporal_smoothing(self, trial_data, kernel, t_axis):
+        return np.apply_along_axis(
+                        lambda m: np.convolve(
+                            m, kernel, 
+                            mode='same'
+                        ), axis=t_axis, arr=trial_data
+                    )
+    
     def static_grating(
             self,
             windowSizeX_Pixel, windowSizeY_Pixel, # size of the stimulus window in pixels
@@ -287,51 +295,7 @@ class ephys_toolkit:
             return self._concatenated_raster(stims, spikes, thresh)
         else:
             return self._unconcatenated_raster(stims, spikes, thresh)
-
-    def avg_across_param(
-            self,
-            pop_resp, # this df must have cluster ids as columns
-            col_param: str, # parameter whose values are to be shown in the columns
-            avg_param: list, # parameters to average across
-    ):
-
-        # groupby the parameter of interest
-        gb = pop_resp.groupby(col_param).agg(list)
-
-        # get an array of the column values and cluster ids
-        col_values = gb.index.values
-        units = [x for x in gb.columns.values if re.search(r'\d', str(x))]
-
-        # initialize dictionary for cross parameter averaged data
-        data = {'cluster': np.array([])}
-        for col in col_values:
-            data[col] = np.array([])
-
-        # create the cluster id column
-        for unit_id in units:
-            unit_ids = np.array([unit_id]*500)
-            data['cluster'] = np.concatenate((data['cluster'], unit_ids), axis = 0)
-
-        # get the number of parameter combos and length of response
-        param_combos = 1
-        for param in avg_param:
-            param_combos*=len(pop_resp[param].unique())
-        resp_len = len(pop_resp.loc[pop_resp.stimulus_condition == 1])
-
-         # create the firing rate value columns
-#         try:
-        for col in col_values:
-            for unit_id in units:
-                cc_avg = np.array(gb[unit_id][col]).reshape(param_combos,resp_len).mean(0)
-                data[col] = np.concatenate((data[col], cc_avg), axis = 0)
-        return pd.DataFrame(data)
-#         except ValueError:
-#                         err_msg = """
-#                         Failed to reshape response array. 
-#                         Make sure col_param is not repeated
-#                         in avg_param.
-#                         """
-#                         print(err_msg)
+        
 
 
 class load_experiment(ephys_toolkit):
