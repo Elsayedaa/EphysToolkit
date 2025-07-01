@@ -585,7 +585,8 @@ class load_experiment(ephys_toolkit):
             df = self.stim_data
             with open(params_file, 'r') as f:
                 lines = f.readlines()[1:-2]
-                
+            
+            # read the lines to make a series of columns to insert
             insert = []
             for line in lines:
                 items = re.split(r'\t+', line)[2:-1]
@@ -594,10 +595,20 @@ class load_experiment(ephys_toolkit):
                     for item in items
                 }
                 insert.append(dic)
-                
+            
+            # add the parameters to the stim_data dataframe
             insert = pd.DataFrame(insert)
             newcol = [list(df.columns)[0]] + list(insert.columns) + list(df.columns)[1:]
             self.stim_data = df.join(insert)[newcol]
+            
+            # make the parameter map
+            stop_index = list(ex3.stim_data.columns).index('stim_start_indicies')
+            df_new = ex3.stim_data[list(ex3.stim_data.columns)[:stop_index]]
+            df_new.columns = ['condition']+list(df_new.columns)[1:]
+            df_new = df_new.drop_duplicates().sort_values(by = 'condition')
+            self.parameter_map = df_new.reset_index().drop('index', axis = 1)
+            
+            self.parameters_matched = True
             
         # if parameters are given in a matlab file        
         elif os.path.splitext(params_file)[1] == '.mat':
