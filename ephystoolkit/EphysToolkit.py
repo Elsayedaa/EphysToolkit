@@ -591,7 +591,7 @@ class load_experiment(ephys_toolkit):
             for line in lines:
                 items = re.split(r'\t+', line)[2:-1]
                 dic = {
-                    item.split(':')[0]:item.split(':')[1].strip(' ') 
+                    item.split(':')[0]:float(item.split(':')[1].strip(' ')) 
                     for item in items
                 }
                 insert.append(dic)
