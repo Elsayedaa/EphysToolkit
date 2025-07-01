@@ -17,7 +17,7 @@ from scipy import signal
 from pathexplorer.PathExplorer import path_explorer
 
 
-class ephys_toolkit:
+class ephys_toolkit(lfp_tools):
 
     def __init__(self):
         
