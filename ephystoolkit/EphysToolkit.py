@@ -237,7 +237,7 @@ class ephys_toolkit:
 
     # functions to make concatenated across trial and non concatenated across trial rasters
     def _concatenated_raster(self, stims, spikes, thresh=tuple):
-        if type(thresh) == tuple:
+        if thresh == tuple:
             r = np.array([spikes - st for st in stims])
             raster = np.concatenate(r)
         else:
@@ -247,7 +247,7 @@ class ephys_toolkit:
         return raster
 
     def _unconcatenated_raster(self, stims, spikes, thresh=tuple):
-        if type(thresh) == tuple:
+        if thresh == tuple:
             rasters = np.array([spikes - st for st in stims])
         else:
             rasters = []
