@@ -988,20 +988,20 @@ class load_experiment(ephys_toolkit):
 
         return population
                     
-    def _stim_frame_map(self, dim, radius, edge):
+    def _stim_frame_map(self, xpix, ypix, xvis, yvis, radius, edge):
         frame_map = {}
         for i in range(len(self.parameter_map)):
             con = i+1
             dx = self.parameter_map.iloc[i]
-
-            frame = self.static_grating(
-                sf = float(dx['Spatial Freq']),
-                ori = float(dx['Orientation']),
-                ph = float(dx['Phase'])*360,
-                dim = dim,
-                radius = radius,
-                edge = edge
-            )
+            
+            frame = static_grating(
+                xpix, ypix,
+                xvis, yvis,
+                float(dx['Spatial Freq']), 
+                float(dx['Orientation']), 
+                float(dx['Phase'])*360,
+                diameter = radius
+                )
 
             frame_map[con] = frame
 
