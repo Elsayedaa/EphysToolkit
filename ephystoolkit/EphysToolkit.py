@@ -50,6 +50,16 @@ class ephys_toolkit:
         return (array / stim_reps) * self.frames
     
     def apply_temporal_smoothing(self, x, k, t_axis):
+        """
+        Apply temporal smoothing to an array, matrix, or tensor 
+        with a convolution kernel. 
+        
+        Args:
+        - x: Input data.
+        - k: Convolution kernel.
+        - t_axis: The dimension in the input data corresponding to time (0 if one dimensional).
+        
+        """
         return np.apply_along_axis(
                         lambda m: np.convolve(
                             m, k, 
@@ -1005,6 +1015,22 @@ class load_experiment(ephys_toolkit):
         return population
     
     def map_rf(self, rfunc, xpix, ypix, xvis, yvis, radius):
+        """
+        Map the spatiotemporal receptive field of a unit with 
+        a response function across a stimulus space. 
+        
+        Args:
+        
+        - rfunc: The unit response function. Dim0 must be equal to
+          the total number of stimulus conditions.  
+        - xpix: The width of the image in pixels.
+        - ypix: The height of the image in pixels.
+        - xvis: The azimuth of the image in degrees.
+        - yvis: The elevation of the image in degrees.
+        - radius: The radius of the circular frame around the image in degrees.
+        """
+        
+        
         self._stim_frame_map(xpix, ypix, xvis, yvis, radius)
         fmap = np.array([x for x in self.frame_map.values()])
         if fmap.T.shape[-1] == rfunc.shape[0]:
