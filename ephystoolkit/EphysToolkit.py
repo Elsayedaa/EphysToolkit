@@ -17,7 +17,7 @@ from scipy import signal
 from pathexplorer.PathExplorer import path_explorer
 
 
-class ephys_toolkit(lfp_tools):
+class ephys_toolkit:
 
     def __init__(self):
         
@@ -317,12 +317,14 @@ class load_experiment(ephys_toolkit):
     - stimfile: Path to the stimulus data file.
     """
 
-    def __init__(self, spikefile, stimfile, logfile):
+    def __init__(self, spikefile, stimfile, logfile, **kwargs):
         ephys_toolkit.__init__(self)
+        
         self.stim_m73 = None
         self.spike_m73 = None
         self.spikefile = spikefile # path to the spike file
         self.stimfile = stimfile # path to the stim file
+        self.depth_data = kwargs['kwargs']['depth_data'] 
         
         try:
             self.spikes_mat = scipy.io.loadmat(spikefile)
@@ -424,7 +426,7 @@ class load_experiment(ephys_toolkit):
             self.spike_data = [
                 {
                     'channel_id': unit[1][0][0],
-                    'depth': self.depth_data.loc[self.depth_data.channel == unit[1][0][0]]['distance'][0],
+                    'depth': self.depth_data.loc[self.depth_data.channel == unit[1][0][0]]['distance'].values[0],
                     'spike_index': unit[2][0],
                     'spike_time': unit[3][0]
                 }
@@ -1291,12 +1293,12 @@ class lfp_tools(ephys_toolkit):
 
         # compile the depth data into a dataframe
         depth_data = {
-            'channel': self.y_index,
+            'channel': self.y_index+1,
             'distance': l4_normalization
         }
         self.depth_data = pd.DataFrame(depth_data)        
 
-class load_project(lfp_tools):
+class load_project(lfp_tools, load_experiment):
     """
     Initialize the load_project class with a full path to the
     directory containing the project files. If the LFP data rhd
@@ -1465,8 +1467,8 @@ class load_project(lfp_tools):
             
             section_child = int(re.search(r'Section_(\d{1,})', matched_files[0]).group(1))
             block = int(re.search(r'BLK(\d{1,})', matched_files[0]).group(1))
-
-            experiment = load_experiment(*matched_files)
+            
+            experiment = load_experiment(*matched_files, kwargs = {'depth_data': self.depth_data})
             self.workbook[section_child - 1]['blocks'].append({
                 'block_id': block,
                 'experiment': experiment
