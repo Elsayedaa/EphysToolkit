@@ -320,8 +320,8 @@ class load_experiment(ephys_toolkit):
     def __init__(self, spikefile, stimfile, logfile, **kwargs):
         ephys_toolkit.__init__(self)
         
-        self.stim_m73 = None
-        self.spike_m73 = None
+        self._stim_m73 = None
+        self._spike_m73 = None
         self.spikefile = spikefile # path to the spike file
         self.stimfile = stimfile # path to the stim file
         self.depth_data = kwargs['kwargs']['depth_data'] 
@@ -330,7 +330,7 @@ class load_experiment(ephys_toolkit):
             self.spikes_mat = scipy.io.loadmat(spikefile)
             self.spikes = self.spikes_mat['Data'][0] # raw spikes dictionary
         except NotImplementedError:
-            self.spike_m73 = True
+            self._spike_m73 = True
             self.spikes_mat = mat73.loadmat(spikefile)
             self.spikes = self.spikes_mat['Data']
             
@@ -338,19 +338,19 @@ class load_experiment(ephys_toolkit):
             self.stims_mat = scipy.io.loadmat(stimfile)
             self.stims = self.stims_mat['StimulusData'][0][0] # raw stims dictionary
         except NotImplementedError:
-            self.stim_m73 = True
+            self._stim_m73 = True
             self.stims_mat = mat73.loadmat(stimfile)
             self.stims = self.stims_mat['StimulusData']
             
-        self.logfile = logfile # stimulus log data
-        self.nodf = False
+        self._logfile = logfile # stimulus log data
+        self._nodf = False
         self._init_stim_data()
         self._init_spike_data()
         self.set_time_unit()
 
-        self.parameters_matched = False
+        self._parameters_matched = False
         
-        if self.nodf:
+        if self._nodf:
             self.stim_conditions = np.unique(
                 self.stim_data['stim_condition_ids']
             )
@@ -359,7 +359,7 @@ class load_experiment(ephys_toolkit):
                 'stim_condition_ids'
             ].unique()
         
-        if self.logfile != None:
+        if self._logfile != None:
             self._get_conditions_from_log()
         else:
             r = r'([A-Z]{1,2}_M\d{1,}_Section_\d{1,}_BLK\d{1,})'
@@ -374,7 +374,7 @@ class load_experiment(ephys_toolkit):
     # Generates the .stim_data attribute.
     def _init_stim_data(self):
         
-        if self.stim_m73:
+        if self._stim_m73:
             stim_data = {
                 'stim_start_indicies': self.stims['stimulusOnsets'],
                 'stim_stop_indicies': self.stims['stimulusOffsets'],
@@ -405,11 +405,11 @@ class load_experiment(ephys_toolkit):
                 """
                 warnings.warn(warn_text, stacklevel = 4)
                 self.stim_data = stim_data
-                self.nodf = True
+                self._nodf = True
 
     # Generates the .spike_data attribute.
     def _init_spike_data(self):
-        if self.spike_m73:
+        if self._spike_m73:
             ci = [int(i) for i in self.spikes['ChannelID']]
             si = self.spikes['SpikePoints']
             st = self.spikes['SpikeTimes']
@@ -439,7 +439,7 @@ class load_experiment(ephys_toolkit):
         
     def _get_conditions_from_log(self):
         
-        with open(self.logfile, 'r') as f:
+        with open(self._logfile, 'r') as f:
             stimlog = f.readlines()
 
         stimlog = stimlog[1:-2]
@@ -473,7 +473,7 @@ class load_experiment(ephys_toolkit):
                 condition_ids += numbers #collect condition ids
             
             # Attempt to fix unequal stimulus arrays/missing values
-            if self.nodf:
+            if self._nodf:
                 stim_start_indicies = self.stim_data['stim_start_indicies']
                 stim_stop_indicies = self.stim_data['stim_stop_indicies']
                 stim_start_times = self.stim_data['stim_start_times']
@@ -517,7 +517,7 @@ class load_experiment(ephys_toolkit):
         
         - bin_size: Time unit given relative to 1 second. The default unit is 1ms/0.001s.
         """
-        if self.nodf:
+        if self._nodf:
             self.stim_data['stim_start_times'] = self._bin_events(bin_size,
                 self.stim_data['stim_start_indicies'])
 
@@ -612,7 +612,7 @@ class load_experiment(ephys_toolkit):
             df_new = df_new.drop_duplicates().sort_values(by = 'condition')
             self.parameter_map = df_new.reset_index().drop('index', axis = 1)
             
-            self.parameters_matched = True
+            self._parameters_matched = True
             
         # if parameters are given in a matlab file        
         elif os.path.splitext(params_file)[1] == '.mat':
@@ -733,7 +733,7 @@ class load_experiment(ephys_toolkit):
                     )
                     ]
 
-            self.parameters_matched = True
+            self._parameters_matched = True
 
     def _pr_unitcols(
             self,
@@ -817,14 +817,14 @@ class load_experiment(ephys_toolkit):
             cond_col += [int(condition)]*len(h)
 
             # append condition parameters
-            if self.parameters_matched:
+            if self._parameters_matched:
                 params = list(
                     self.parameter_map.loc[self.parameter_map.condition == condition].values[0][1:]
                 )
                 param_col += [params] * len(h)
 
         # Rearrange the dataframe
-        if self.parameters_matched:
+        if self._parameters_matched:
 
             # Make the population & stimulus parameters dataframes
             population = pd.DataFrame(population)
@@ -1040,8 +1040,8 @@ class lfp_tools(ephys_toolkit):
     #### initialize class with the necessary paths ###
     def __init__(self):
         ephys_toolkit.__init__(self)
-        self.low = 1
-        self.high = 120
+        self._low = 1
+        self._high = 120
         
     ### process the lfp data by running the necssary methods ###
     def process_lfp(self, intan_file, probe = None):
@@ -1058,8 +1058,8 @@ class lfp_tools(ephys_toolkit):
           are dorsal to layer 4.
         
         """
-        self.probe_fol = os.path.join(self._modpath, 'probes')
-        valid_probes0 = os.listdir(self.probe_fol)
+        self._probe_fol = os.path.join(self._modpath, 'probes')
+        valid_probes0 = os.listdir(self._probe_fol)
         valid_probes = [os.path.splitext(x)[0] for x in valid_probes0]
         if probe == None:
             inputtext = fr"""
@@ -1105,9 +1105,9 @@ class lfp_tools(ephys_toolkit):
         else:
             pass
         
-        self.probe = probe
+        self._probe = probe
         self.intan_file = intan_file
-        self.channel_file = os.path.join(self.probe_fol, f"{probe}.csv")
+        self.channel_file = os.path.join(self._probe_fol, f"{probe}.csv")
         
         self._load_lfp_data()
         
@@ -1130,8 +1130,8 @@ class lfp_tools(ephys_toolkit):
         
         #SAMPLING_RATE = 20000.0
         nyqs = 0.5 * self._SAMPLING_RATE
-        low = self.low/nyqs
-        high = self.high/nyqs
+        low = self._low/nyqs
+        high = self._high/nyqs
 
         order = 2
 
@@ -1168,10 +1168,10 @@ class lfp_tools(ephys_toolkit):
         ## 0 = deepest
         
         # adjust single channels offset on x by a negligable amount
-        if self.probe == '64D':
+        if self._probe == '64D':
             self.channel_data[np.where(self.channel_data == 16)] = 20
             self.channel_data[np.where(self.channel_data == -16)] = -20
-        if self.probe == '64H':
+        if self._probe == '64H':
             self.channel_data[np.where(self.channel_data == 20)] = 22.5
             self.channel_data[np.where(self.channel_data == -20)] = -22.5
             self.channel_data[np.where(self.channel_data == 180.1)] = 177.6
@@ -1346,9 +1346,9 @@ class load_project(lfp_tools, load_experiment):
 
     def __init__(self, project_path, probe = None, use_lfp_file = 0):
         lfp_tools.__init__(self)
-        self.lfp_index = use_lfp_file
-        self.probe = probe
-        self.ppath = project_path
+        self._lfp_index = use_lfp_file
+        self._probe = probe
+        self._ppath = project_path
         self._init_project_workbook()
 
     # generate the workbook of project data
@@ -1356,15 +1356,15 @@ class load_project(lfp_tools, load_experiment):
         explorer = path_explorer()
 
         # find and sort spike files
-        spike_files = explorer.findext(self.ppath, '.mat', r='firings')
+        spike_files = explorer.findext(self._ppath, '.mat', r='firings')
         spike_files.sort(key=lambda x: int(re.search(r'BLK(\d{1,})', x).group(1)))
 
         # find and sort stim files
-        stim_files = explorer.findext(self.ppath, '.mat', r='stimulusData')
+        stim_files = explorer.findext(self._ppath, '.mat', r='stimulusData')
         stim_files.sort(key=lambda x: int(re.search(r'BLK(\d{1,})', x).group(1)))
         
         # find and sort log files
-        log_files = explorer.findext(self.ppath, '.log')
+        log_files = explorer.findext(self._ppath, '.log')
         log_files.sort(key=lambda x: int(re.search(r'BLK(\d{1,})', x).group(1)))
         
         # count how many log files are in the data folder
@@ -1376,11 +1376,11 @@ class load_project(lfp_tools, load_experiment):
         matched_block_files = zip(spike_files, stim_files, log_files)
 
         # find metrics files
-        metrics_files = explorer.findext(self.ppath, '.json', r='metrics_isolation')
+        metrics_files = explorer.findext(self._ppath, '.json', r='metrics_isolation')
         metrics_files.sort(key=lambda x: int(re.search(r'Section_(\d{1,})', x).group(1)))
         
         # find checkerboard rhd files
-        rhd_files = explorer.findext(self.ppath, '.rhd')
+        rhd_files = explorer.findext(self._ppath, '.rhd')
         rhd_files.sort(key=lambda x: int(re.search(r'Section_(\d{1,})', x).group(1)))
         
         # group together multiple checkerboard recordings
@@ -1435,7 +1435,7 @@ class load_project(lfp_tools, load_experiment):
             warnings.warn(warn_text, stacklevel = 4)
         else:
             for rhd_file in rhd_files:
-                if (type(rhd_file) == list) & (self.lfp_index == 0):
+                if (type(rhd_file) == list) & (self._lfp_index == 0):
                     warn_text = """
                     WARNING: More than one LFP data file found in this section.
                     Defaulting to the first LFP file found in the section. If 
@@ -1447,14 +1447,14 @@ class load_project(lfp_tools, load_experiment):
                     """
                     warnings.warn(warn_text, stacklevel = 4)
                     
-                    rhd_file = rhd_file[self.lfp_index]
-                elif (type(rhd_file) == list) & (self.lfp_index != 0):
+                    rhd_file = rhd_file[self._lfp_index]
+                elif (type(rhd_file) == list) & (self._lfp_index != 0):
                     use_lfp_file = use_lfp_file-1
-                    rhd_file = rhd_file[self.lfp_index]
+                    rhd_file = rhd_file[self._lfp_index]
                 else:
                     pass
                 
-                self.process_lfp(rhd_file, self.probe)
+                self.process_lfp(rhd_file, self._probe)
                 section_parent = int(re.search(r'Section_(\d{1,})', rhd_file).group(1))
                 self.workbook[section_parent-1]['lfp_heatmaps'] = self.lfp_heatmaps
                 self.workbook[section_parent-1]['depth_data'] = self.depth_data
