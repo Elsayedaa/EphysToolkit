@@ -322,9 +322,9 @@ class load_experiment(ephys_toolkit):
         
         self._stim_m73 = None
         self._spike_m73 = None
-        self.spikefile = spikefile # path to the spike file
-        self.stimfile = stimfile # path to the stim file
-        self.depth_data = kwargs['kwargs']['depth_data'] 
+        self._spikefile = spikefile # path to the spike file
+        self._stimfile = stimfile # path to the stim file
+        self._depth_data = kwargs['kwargs']['depth_data'] 
         
         try:
             self.spikes_mat = scipy.io.loadmat(spikefile)
@@ -426,7 +426,7 @@ class load_experiment(ephys_toolkit):
             self.spike_data = [
                 {
                     'channel_id': unit[1][0][0],
-                    'depth': self.depth_data.loc[self.depth_data.channel == unit[1][0][0]]['distance'].values[0],
+                    'depth': self._depth_data.loc[self._depth_data.channel == unit[1][0][0]]['distance'].values[0],
                     'spike_index': unit[2][0],
                     'spike_time': unit[3][0]
                 }
@@ -1296,7 +1296,7 @@ class lfp_tools(ephys_toolkit):
             'channel': self.y_index+1,
             'distance': l4_normalization
         }
-        self.depth_data = pd.DataFrame(depth_data)        
+        self._depth_data = pd.DataFrame(depth_data)        
 
 class load_project(lfp_tools, load_experiment):
     """
@@ -1457,7 +1457,7 @@ class load_project(lfp_tools, load_experiment):
                 self.process_lfp(rhd_file, self._probe)
                 section_parent = int(re.search(r'Section_(\d{1,})', rhd_file).group(1))
                 self.workbook[section_parent-1]['lfp_heatmaps'] = self.lfp_heatmaps
-                self.workbook[section_parent-1]['depth_data'] = self.depth_data
+                self.workbook[section_parent-1]['depth_data'] = self._depth_data
 
         # match experiment (block) objects to section
         for matched_files in list(matched_block_files):
@@ -1468,7 +1468,7 @@ class load_project(lfp_tools, load_experiment):
             section_child = int(re.search(r'Section_(\d{1,})', matched_files[0]).group(1))
             block = int(re.search(r'BLK(\d{1,})', matched_files[0]).group(1))
             
-            experiment = load_experiment(*matched_files, kwargs = {'depth_data': self.depth_data})
+            experiment = load_experiment(*matched_files, kwargs = {'depth_data': self._depth_data})
             self.workbook[section_child - 1]['blocks'].append({
                 'block_id': block,
                 'experiment': experiment
