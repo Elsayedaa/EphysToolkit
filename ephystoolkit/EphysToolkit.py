@@ -338,6 +338,7 @@ class load_experiment(ephys_toolkit):
         try: # check for LFP depth data
             self._depth_data = kwargs['kwargs']['depth_data']
         except KeyError:
+            self.missing_depth_data = True
             pass 
         
         try:
@@ -435,8 +436,19 @@ class load_experiment(ephys_toolkit):
                 }
                 for i in range(len(st))
             ]
-        else:
+        
+        elif self.missing_depth_data:
+            self.spike_data = [
+                {
+                    'channel_id': unit[1][0][0],
+                    'spike_index': unit[2][0],
+                    'spike_time': unit[3][0]
+                }
+                for unit in
+                self.spikes
+            ]
             
+        else:
             self.spike_data = [
                 {
                     'channel_id': unit[1][0][0],
