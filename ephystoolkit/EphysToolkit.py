@@ -327,14 +327,18 @@ class load_experiment(ephys_toolkit):
     - stimfile: Path to the stimulus data file.
     """
 
-    def __init__(self, spikefile, stimfile, logfile, **kwargs):
+    def __init__(self, spikefile, stimfile, logfile = None, **kwargs):
         ephys_toolkit.__init__(self)
         
         self._stim_m73 = None
         self._spike_m73 = None
         self._spikefile = spikefile # path to the spike file
         self._stimfile = stimfile # path to the stim file
-        self._depth_data = kwargs['kwargs']['depth_data'] 
+
+        try: # check for LFP depth data
+            self._depth_data = kwargs['kwargs']['depth_data']
+        except KeyError:
+            pass 
         
         try:
             self.spikes_mat = scipy.io.loadmat(spikefile)
@@ -351,7 +355,7 @@ class load_experiment(ephys_toolkit):
             self._stim_m73 = True
             self.stims_mat = mat73.loadmat(stimfile)
             self.stims = self.stims_mat['StimulusData']
-            
+        
         self._logfile = logfile # stimulus log data
         self._nodf = False
         self._init_stim_data()
