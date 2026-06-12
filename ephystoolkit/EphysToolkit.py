@@ -355,6 +355,7 @@ class load_experiment(ephys_toolkit):
             self.stims_mat = mat73.loadmat(stimfile)
             self.stims = self.stims_mat['StimulusData']
         
+        
         self._logfile = logfile # stimulus log data
         self._nodf = False
         self._init_stim_data()
@@ -434,8 +435,19 @@ class load_experiment(ephys_toolkit):
                 }
                 for i in range(len(st))
             ]
-        else:
+        
+        elif self.missing_depth_data:
+            self.spike_data = [
+                {
+                    'channel_id': unit[1][0][0],
+                    'spike_index': unit[2][0],
+                    'spike_time': unit[3][0]
+                }
+                for unit in
+                self.spikes
+            ]
             
+        else:
             self.spike_data = [
                 {
                     'channel_id': unit[1][0][0],
