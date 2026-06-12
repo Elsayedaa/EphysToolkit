@@ -39,7 +39,7 @@ pip install matplotlib seaborn
 ```
 ### 4) Download the demo notebook and sample data (932 mb)
 
-- Make sure to download these to the same folder:
+- Make sure to download these to the same folder and extract the data zip file into the same folder:
 - [Demo notebook (GitHub link)](https://github.com/Elsayedaa/EphysToolkit/blob/c767612a5182c4199746a470ce156e5c7d60051e/how_to_demonstration.ipynb) 
 - [Dataset (Figshare link)](https://doi.org/10.6084/m9.figshare.32664219)
   
