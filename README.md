@@ -16,19 +16,26 @@ Custom Python modules for handling electrophysiology data produced by the Cang L
 - Run anaconda prompt and paste the following commands
 
 ```
-conda create -n ephystoolkit python=3.9 -y
-conda activate ephystoolkit  
-```  
+conda create -n ephystoolkit python=3.9
+```
+```
+conda activate ephystoolkit
+```
 ### 2) Install Jupyter Notebook and register the environment   
 
 ```
-conda install -c conda-forge notebook ipykernel -y 
-python -m ipykernel install --user --name ephystoolkit --display-name "Python (ephystoolkit)" 
+pip install jupyterlab
 ```
-### 3) Install EphysToolkit  
+```
+python -m ipykernel install --user --name ephystoolkit --display-name "Python (ephystoolkit)"
+```
+### 3) Install EphysToolkit and other dependencies 
 
 ```
 pip install https://github.com/Elsayedaa/EphysToolkit/archive/refs/heads/main.zip  
+```
+```
+pip install matplotlib seaborn
 ```
 ### 4) Download the demo notebook and sample data (932 mb)
 
