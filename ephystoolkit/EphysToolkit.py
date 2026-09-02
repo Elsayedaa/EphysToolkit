@@ -337,7 +337,8 @@ class load_experiment(ephys_toolkit):
         try: # check for LFP depth data
             self._depth_data = kwargs['kwargs']['depth_data']
         except KeyError:
-            pass 
+            self._depth_data = None
+            print("Warning: No checkerboard data, LFP heatmap will not be available.") 
         
         try:
             self.spikes_mat = scipy.io.loadmat(spikefile)
